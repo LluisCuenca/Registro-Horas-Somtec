@@ -46,7 +46,7 @@
       <div class="toolbar">
         <div>
           <p class="eyebrow">Registros</p>
-          <h2>Historial de horas</h2>
+          <h2>Calendario de horas</h2>
         </div>
         <div class="actions">
           <button class="secondary" id="exportCsvBtn">Exportar CSV</button>
@@ -54,13 +54,22 @@
           <label class="secondary file-label">Importar JSON<input id="importJsonInput" type="file" accept="application/json"></label>
         </div>
       </div>
-      <div class="filters">
-        <label>Empleado<select id="employeeFilter"></select></label>
-        <label>Tarea<select id="categoryFilter"></select></label>
-        <label>Desde<input id="fromFilter" type="date"></label>
-        <label>Hasta<input id="toFilter" type="date"></label>
+      <div class="history-controls">
+        <div class="period-tabs" role="group" aria-label="Periodo del historial">
+          <button class="period-tab active" data-period="day">Día</button>
+          <button class="period-tab" data-period="week">Semana</button>
+          <button class="period-tab" data-period="month">Mes</button>
+          <button class="period-tab" data-period="year">Año</button>
+        </div>
+        <div class="period-pickers">
+          <label id="periodDateWrap">Fecha<input id="periodDate" type="date"></label>
+          <label id="periodWeekWrap" class="hidden">Semana<input id="periodWeek" type="week"></label>
+          <label id="periodMonthWrap" class="hidden">Mes<input id="periodMonth" type="month"></label>
+          <label id="periodYearWrap" class="hidden">Año<input id="periodYear" type="number" min="2020" max="2100"></label>
+        </div>
       </div>
-      <div id="historyList" class="table-list"></div>
+      <div id="calendarWrap"></div>
+      <div id="periodPanel"></div>
     </section>
 
     <section id="config" class="view">
@@ -126,6 +135,9 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="https://www.gstatic.com/firebasejs/12.13.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.13.0/firebase-database-compat.js"></script>
+  <script src="firebase-config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

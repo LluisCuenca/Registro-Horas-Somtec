@@ -1,4 +1,6 @@
 const STORAGE_KEY = "somtec_hours_v1";
+const REMOTE_PATH = "somtec-hours";
+const DAY_NAMES = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
 
 const DEFAULT_DATA = {
   employees: [
@@ -21,6 +23,11 @@ let data = loadData();
 let dialogMode = "timer";
 let editingEmployeeId = null;
 let configState = {};
+let historyMode = "day";
+let selectedDate = dateKey(new Date());
+let remoteRef = null;
+let applyingRemote = false;
+let remoteSaveTimer = null;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -35,10 +42,59 @@ function loadData() {
   return structuredClone(DEFAULT_DATA);
 }
 
+function isValidData(value) {
+  return value && Array.isArray(value.employees) && value.tasks && Array.isArray(value.records);
+}
+
 function saveData() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  $("#storageStatus").textContent = "Guardado";
-  setTimeout(() => { $("#storageStatus").textContent = "Local"; }, 900);
+  setStorageStatus(remoteRef ? "Guardando" : "Local");
+  if (remoteRef && !applyingRemote) {
+    clearTimeout(remoteSaveTimer);
+    remoteSaveTimer = setTimeout(() => {
+      remoteRef.set(data)
+        .then(() => setStorageStatus("Firebase"))
+        .catch(() => setStorageStatus("Error sync"));
+    }, 250);
+  } else if (!remoteRef) {
+    setTimeout(() => setStorageStatus("Local"), 900);
+  }
+}
+
+function setStorageStatus(label) {
+  const el = $("#storageStatus");
+  if (el) el.textContent = label;
+}
+
+function initRemoteSync() {
+  const config = window.SOMTEC_FIREBASE_CONFIG;
+  if (!config || !config.apiKey || !config.databaseURL || !window.firebase) {
+    setStorageStatus("Local");
+    return;
+  }
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(config);
+    remoteRef = firebase.database().ref(REMOTE_PATH);
+    setStorageStatus("Conectando");
+    remoteRef.on("value", (snapshot) => {
+      const remoteData = snapshot.val();
+      if (isValidData(remoteData)) {
+        applyingRemote = true;
+        data = remoteData;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        renderFilters();
+        updateDialogTasks();
+        render();
+        applyingRemote = false;
+        setStorageStatus("Firebase");
+      } else {
+        remoteRef.set(data).then(() => setStorageStatus("Firebase"));
+      }
+    }, () => setStorageStatus("Error sync"));
+  } catch (error) {
+    remoteRef = null;
+    setStorageStatus("Local");
+  }
 }
 
 function uid(prefix) {
@@ -213,33 +269,196 @@ function renderEmployeeGrid() {
 }
 
 function renderFilters() {
-  $("#employeeFilter").innerHTML = `<option value="">Todos</option>` + data.employees.map((employee) => `<option value="${employee.id}">${escapeHtml(employee.name)}</option>`).join("");
-  $("#categoryFilter").innerHTML = `<option value="">Todas</option>` + Object.keys(data.tasks).map((category) => `<option value="${escapeAttr(category)}">${escapeHtml(category)}</option>`).join("");
   $("#dialogEmployee").innerHTML = data.employees.map((employee) => `<option value="${employee.id}">${escapeHtml(employee.name)}</option>`).join("");
   $("#dialogCategory").innerHTML = Object.keys(data.tasks).map((category) => `<option value="${escapeAttr(category)}">${escapeHtml(category)}</option>`).join("");
 }
 
 function filteredHistory() {
-  const employeeId = $("#employeeFilter").value;
-  const category = $("#categoryFilter").value;
-  const from = $("#fromFilter").value;
-  const to = $("#toFilter").value;
-  return completedRecords()
-    .filter((record) => !employeeId || record.employeeId === employeeId)
-    .filter((record) => !category || record.category === category)
-    .filter((record) => !from || dateKey(record.startAt) >= from)
-    .filter((record) => !to || dateKey(record.startAt) <= to)
+  const { from, to } = getPeriodRange();
+  return recordsInRange(from, to)
     .sort((a, b) => new Date(b.startAt) - new Date(a.startAt));
 }
 
 function renderHistory() {
-  const rows = filteredHistory();
-  $("#historyList").innerHTML = rows.map((record) => `<div class="table-row">
-    <div><strong>${escapeHtml(record.employeeName)}</strong><small>${formatDateTime(record.startAt)}${record.manual ? " · manual" : ""}</small></div>
-    <div><strong>${escapeHtml(record.project)}</strong><small>${escapeHtml(record.category)} / ${escapeHtml(record.task)}</small></div>
-    <div class="hours">${recordHours(record).toFixed(2)} h</div>
-    <div class="row-actions"><button class="danger" data-action="delete-record" data-id="${record.id}">Eliminar</button></div>
-  </div>`).join("") || `<div class="empty">Sin registros para estos filtros.</div>`;
+  renderPeriodControls();
+  renderCalendar();
+  renderPeriodPanel();
+}
+
+function recordsInRange(from, to) {
+  return completedRecords().filter((record) => {
+    const started = new Date(record.startAt);
+    return started >= from && started <= to;
+  });
+}
+
+function getPeriodRange() {
+  if (historyMode === "week") {
+    const weekValue = $("#periodWeek")?.value || getWeekInputValue(new Date(selectedDate));
+    const from = startOfISOWeekInput(weekValue);
+    const to = endOfDay(addDays(from, 6));
+    return { from, to, label: `Semana ${weekValue.split("-W")[1]} · ${formatDateShort(from)} - ${formatDateShort(to)}` };
+  }
+  if (historyMode === "month") {
+    const monthValue = $("#periodMonth")?.value || selectedDate.slice(0, 7);
+    const [year, month] = monthValue.split("-").map(Number);
+    const from = new Date(year, month - 1, 1, 0, 0, 0, 0);
+    const to = endOfDay(new Date(year, month, 0));
+    return { from, to, label: from.toLocaleDateString("es-ES", { month: "long", year: "numeric" }) };
+  }
+  if (historyMode === "year") {
+    const year = Number($("#periodYear")?.value || new Date(selectedDate).getFullYear());
+    return { from: new Date(year, 0, 1, 0, 0, 0, 0), to: endOfDay(new Date(year, 11, 31)), label: String(year) };
+  }
+  const dateValue = $("#periodDate")?.value || selectedDate;
+  const from = new Date(`${dateValue}T00:00:00`);
+  const to = endOfDay(from);
+  return { from, to, label: formatDateLong(from) };
+}
+
+function renderPeriodControls() {
+  $$(".period-tab").forEach((button) => button.classList.toggle("active", button.dataset.period === historyMode));
+  $("#periodDateWrap").classList.toggle("hidden", historyMode !== "day");
+  $("#periodWeekWrap").classList.toggle("hidden", historyMode !== "week");
+  $("#periodMonthWrap").classList.toggle("hidden", historyMode !== "month");
+  $("#periodYearWrap").classList.toggle("hidden", historyMode !== "year");
+  $("#periodDate").value = selectedDate;
+  $("#periodWeek").value = getWeekInputValue(new Date(selectedDate));
+  $("#periodMonth").value = selectedDate.slice(0, 7);
+  $("#periodYear").value = new Date(selectedDate).getFullYear();
+}
+
+function renderCalendar() {
+  const wrap = $("#calendarWrap");
+  if (!wrap) return;
+  const selected = new Date(`${selectedDate}T12:00:00`);
+  const year = selected.getFullYear();
+  const month = selected.getMonth();
+  const first = new Date(year, month, 1);
+  const startOffset = (first.getDay() + 6) % 7;
+  const gridStart = addDays(first, -startOffset);
+  const range = getPeriodRange();
+  let html = `<div class="calendar-shell">
+    <div class="calendar-head">${DAY_NAMES.map((day) => `<div>${day}</div>`).join("")}</div>
+    <div class="calendar-grid">`;
+  for (let i = 0; i < 42; i += 1) {
+    const day = addDays(gridStart, i);
+    const key = dateKey(day);
+    const rows = recordsInRange(new Date(`${key}T00:00:00`), endOfDay(day));
+    const total = rows.reduce((sum, record) => sum + recordHours(record), 0);
+    const workerChips = summarizeByEmployee(rows).slice(0, 2).map((item) => `<span class="day-chip">${escapeHtml(initials(item.name))} ${item.hours.toFixed(1)}h</span>`).join("");
+    const isSelected = day >= startOfDay(range.from) && day <= range.to;
+    html += `<button class="calendar-day ${day.getMonth() !== month ? "muted-day" : ""} ${isSelected ? "selected" : ""}" data-action="select-calendar-day" data-date="${key}">
+      <span class="day-number">${day.getDate()}</span>
+      ${total ? `<span class="day-hours">${total.toFixed(1)}h</span>${workerChips}` : `<span class="day-hours">-</span>`}
+    </button>`;
+  }
+  html += `</div></div>`;
+  wrap.innerHTML = html;
+}
+
+function renderPeriodPanel() {
+  const panel = $("#periodPanel");
+  const { from, to, label } = getPeriodRange();
+  const rows = recordsInRange(from, to);
+  const total = rows.reduce((sum, record) => sum + recordHours(record), 0);
+  const activeDays = new Set(rows.map((record) => dateKey(record.startAt))).size;
+  const workerCards = data.employees.map((employee) => renderWorkerPeriodCard(employee, rows)).join("");
+  panel.innerHTML = `<div class="period-panel">
+    <div class="period-summary">
+      <div class="period-metric"><span class="muted">Periodo</span><strong>${escapeHtml(label)}</strong></div>
+      <div class="period-metric"><span class="muted">Total</span><strong>${total.toFixed(2)} h</strong></div>
+      <div class="period-metric"><span class="muted">Dias con actividad</span><strong>${activeDays}</strong></div>
+      <div class="period-metric"><span class="muted">Registros</span><strong>${rows.length}</strong></div>
+    </div>
+    <div class="worker-period-grid">${workerCards}</div>
+  </div>`;
+}
+
+function renderWorkerPeriodCard(employee, periodRecords) {
+  const rows = periodRecords.filter((record) => record.employeeId === employee.id);
+  const total = rows.reduce((sum, record) => sum + recordHours(record), 0);
+  const breakdown = new Map();
+  rows.forEach((record) => {
+    const key = `${record.category} / ${record.project} / ${record.task}`;
+    breakdown.set(key, (breakdown.get(key) || 0) + recordHours(record));
+  });
+  const breakdownRows = Array.from(breakdown.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, hours]) => `<div class="breakdown-row"><span><strong>${escapeHtml(label.split(" / ")[0])}</strong><br>${escapeHtml(label.split(" / ").slice(1).join(" / "))}</span><span class="breakdown-hours">${hours.toFixed(2)}h</span></div>`)
+    .join("") || `<div class="muted">Sin horas registradas en este periodo.</div>`;
+  return `<article class="worker-period-card">
+    <div class="worker-period-head">
+      <div><strong>${escapeHtml(employee.name)}</strong><br><span class="muted">${escapeHtml(employee.role)}</span></div>
+      <div class="worker-period-total">${total.toFixed(1)}h</div>
+    </div>
+    <div class="breakdown-list">${breakdownRows}</div>
+  </article>`;
+}
+
+function summarizeByEmployee(records) {
+  const map = new Map();
+  records.forEach((record) => {
+    const item = map.get(record.employeeId) || { name: record.employeeName, hours: 0 };
+    item.hours += recordHours(record);
+    map.set(record.employeeId, item);
+  });
+  return Array.from(map.values()).sort((a, b) => b.hours - a.hours);
+}
+
+function startOfDay(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function endOfDay(date) {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+function addDays(date, days) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function formatDateShort(date) {
+  return date.toLocaleDateString("es-ES", { day: "2-digit", month: "short" });
+}
+
+function formatDateLong(date) {
+  return date.toLocaleDateString("es-ES", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+}
+
+function getWeekInputValue(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+function startOfISOWeekInput(value) {
+  const [yearText, weekText] = value.split("-W");
+  const year = Number(yearText);
+  const week = Number(weekText);
+  const simple = new Date(year, 0, 1 + (week - 1) * 7);
+  const dow = simple.getDay();
+  const monday = new Date(simple);
+  if (dow <= 4) monday.setDate(simple.getDate() - ((dow + 6) % 7));
+  else monday.setDate(simple.getDate() + (8 - dow));
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+}
+
+function syncSelectedDateFromPeriodInput() {
+  if (historyMode === "day") selectedDate = $("#periodDate").value || selectedDate;
+  if (historyMode === "week") selectedDate = dateKey(startOfISOWeekInput($("#periodWeek").value || getWeekInputValue(new Date(selectedDate))));
+  if (historyMode === "month") selectedDate = `${$("#periodMonth").value || selectedDate.slice(0, 7)}-01`;
+  if (historyMode === "year") selectedDate = `${$("#periodYear").value || new Date(selectedDate).getFullYear()}-01-01`;
 }
 
 function renderConfig() {
@@ -415,6 +634,11 @@ function bindEvents() {
     if (action === "resume") resumeRecord(id);
     if (action === "finish") finishRecord(id);
     if (action === "delete-record") deleteRecord(id);
+    if (action === "select-calendar-day") {
+      selectedDate = target.dataset.date;
+      historyMode = "day";
+      renderHistory();
+    }
     if (action === "open-add-employee") {
       configState = { employee: "__new__" };
       renderConfig();
@@ -460,7 +684,29 @@ function bindEvents() {
   $("#cancelDialogBtn").addEventListener("click", closeTaskDialog);
   $("#taskDialogForm").addEventListener("submit", handleDialogSubmit);
   $("#dialogCategory").addEventListener("change", updateDialogTasks);
-  ["employeeFilter", "categoryFilter", "fromFilter", "toFilter"].forEach((id) => $(`#${id}`).addEventListener("change", renderHistory));
+  $$(".period-tab").forEach((button) => button.addEventListener("click", () => {
+    historyMode = button.dataset.period;
+    syncSelectedDateFromPeriodInput();
+    renderHistory();
+  }));
+  $("#periodDate").addEventListener("change", () => {
+    selectedDate = $("#periodDate").value || selectedDate;
+    renderHistory();
+  });
+  $("#periodWeek").addEventListener("change", () => {
+    selectedDate = dateKey(startOfISOWeekInput($("#periodWeek").value));
+    renderHistory();
+  });
+  $("#periodMonth").addEventListener("change", () => {
+    const value = $("#periodMonth").value;
+    if (value) selectedDate = `${value}-01`;
+    renderHistory();
+  });
+  $("#periodYear").addEventListener("change", () => {
+    const year = $("#periodYear").value || new Date().getFullYear();
+    selectedDate = `${year}-01-01`;
+    renderHistory();
+  });
   $("#exportCsvBtn").addEventListener("click", exportCsv);
   $("#exportJsonBtn").addEventListener("click", exportJson);
   $("#configExportJsonBtn").addEventListener("click", exportJson);
@@ -545,4 +791,5 @@ renderFilters();
 updateDialogTasks();
 bindEvents();
 render();
+initRemoteSync();
 setInterval(renderEmployeeGrid, 1000);
