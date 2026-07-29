@@ -7,6 +7,9 @@
   <meta name="theme-color" content="#38558e">
   <link rel="icon" href="assets/logo-somtec.png">
   <link rel="apple-touch-icon" href="assets/logo-somtec.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -27,14 +30,14 @@
   <nav class="tabs" aria-label="Vistas">
     <button class="tab active" data-tab="registro">Registro</button>
     <button class="tab" data-tab="historial">Historial</button>
-    <button class="tab" data-tab="config">Config</button>
+    <button class="tab" data-tab="config">Configuración</button>
   </nav>
 
   <main>
     <section id="registro" class="view active">
       <div class="toolbar">
         <div>
-          <p class="eyebrow">Equipo</p>
+          <p class="eyebrow">Registro</p>
           <h2>Fichaje por proyecto o labor</h2>
         </div>
         <button class="secondary" id="manualEntryBtn">Añadir horas</button>
@@ -45,13 +48,13 @@
     <section id="historial" class="view">
       <div class="toolbar">
         <div>
-          <p class="eyebrow">Registros</p>
+          <p class="eyebrow">Historial</p>
           <h2>Calendario de horas</h2>
         </div>
         <div class="actions">
-          <button class="secondary" id="exportCsvBtn">Exportar CSV</button>
-          <button class="secondary" id="exportJsonBtn">Copia JSON</button>
-          <label class="secondary file-label">Importar JSON<input id="importJsonInput" type="file" accept="application/json"></label>
+          <button class="secondary" id="exportCsvBtn">Exportar csv</button>
+          <button class="secondary" id="exportJsonBtn">Copia json</button>
+          <label class="secondary file-label">Importar json<input id="importJsonInput" type="file" accept="application/json"></label>
         </div>
       </div>
       <div class="history-controls">
@@ -75,7 +78,7 @@
     <section id="config" class="view">
       <div class="toolbar">
         <div>
-          <p class="eyebrow">Administración</p>
+          <p class="eyebrow">Ajustes</p>
           <h2>Equipo y tareas</h2>
         </div>
       </div>
@@ -101,8 +104,8 @@
           <p class="muted">Exporta o importa los datos locales del navegador.</p>
         </div>
         <div class="actions">
-          <button class="secondary" id="configExportJsonBtn">Descargar JSON</button>
-          <label class="secondary file-label">Importar JSON<input id="configImportJsonInput" type="file" accept="application/json"></label>
+          <button class="secondary" id="configExportJsonBtn">Descargar json</button>
+          <label class="secondary file-label">Importar json<input id="configImportJsonInput" type="file" accept="application/json"></label>
           <button class="danger" id="resetDemoBtn">Reiniciar datos</button>
         </div>
       </div>

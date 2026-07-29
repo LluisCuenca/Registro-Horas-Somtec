@@ -33,7 +33,7 @@ const path = require("path");
   await page.locator("#periodPanel").getByText("Total").waitFor();
   await page.getByRole("button", { name: "Año" }).click();
   await page.locator("#periodPanel").getByText("Registros").waitFor();
-  await page.getByRole("button", { name: "Config" }).click();
+  await page.getByRole("button", { name: "Configuración" }).click();
   await page.getByRole("button", { name: "Añadir trabajador" }).click();
   await page.locator("#configEmployeeName").fill("Nueva Persona");
   await page.locator("#configEmployeeRole").fill("Pruebas");

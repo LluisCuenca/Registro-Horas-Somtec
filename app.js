@@ -5,15 +5,15 @@ const DAY_NAMES = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
 const DEFAULT_DATA = {
   employees: [
     { id: "e-julian", name: "Julian Cuenca", role: "CEO y Gerente" },
-    { id: "e-salvador", name: "Salvador Bordoy", role: "Director Tecnico" },
-    { id: "e-admin", name: "Administracion", role: "Oficina" },
-    { id: "e-tecnico", name: "Tecnico Somtec", role: "Servicios tecnicos" }
+    { id: "e-salvador", name: "Salvador Bordoy", role: "Director técnico" },
+    { id: "e-admin", name: "Administración", role: "Oficina" },
+    { id: "e-tecnico", name: "Técnico Somtec", role: "Servicios técnicos" }
   ],
   tasks: {
-    Facturacion: ["Interna", "Externa", "Seguimiento cobros"],
-    Proyectos: ["Planificacion", "Visita tecnica", "Presupuesto", "Seguimiento", "Entrega"],
-    Servicios: ["Instalacion", "Mantenimiento", "Reparacion", "Soporte cliente"],
-    Administracion: ["Compras", "Gestion interna", "Llamadas"],
+    Facturación: ["Interna", "Externa", "Seguimiento cobros"],
+    Proyectos: ["Planificación", "Visita técnica", "Presupuesto", "Seguimiento", "Entrega"],
+    Servicios: ["Instalación", "Mantenimiento", "Reparación", "Soporte cliente"],
+    Administración: ["Compras", "Gestión interna", "Llamadas"],
     Comercial: ["Contacto cliente", "Propuesta", "Reunion", "Cierre"]
   },
   records: []
@@ -471,7 +471,6 @@ function renderEmployeesConfig() {
     if (configState.employee === employee.id) return employeeEditorRow(employee);
     return `<div class="table-row">
       <div><strong>${escapeHtml(employee.name)}</strong><small>${escapeHtml(employee.role)}</small></div>
-      <div></div><div></div>
       <div class="row-actions">
         <button class="secondary" data-action="edit-employee" data-id="${employee.id}">Editar</button>
         <button class="danger" data-action="delete-employee" data-id="${employee.id}">Eliminar</button>
@@ -501,7 +500,6 @@ function renderTasksConfig() {
     if (configState.task === task) return taskEditorRow(task, subtasks);
     return `<div class="table-row">
       <div><strong>${escapeHtml(task)}</strong><small>${subtasks.map(escapeHtml).join(", ") || "Sin subtareas"}</small></div>
-      <div></div><div></div>
       <div class="row-actions">
         <button class="secondary" data-action="edit-task" data-task="${escapeAttr(task)}">Editar</button>
         <button class="danger" data-action="delete-task" data-task="${escapeAttr(task)}">Eliminar</button>
