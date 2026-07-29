@@ -1,0 +1,5 @@
+.DS_Store
+Referencia Archviz/
+Referencia Visual Somtec/
+*.png
+!assets/logo-somtec.png

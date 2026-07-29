@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Registro Horas Somtec</title>
+  <meta name="theme-color" content="#38558e">
+  <link rel="icon" href="assets/logo-somtec.png">
+  <link rel="apple-touch-icon" href="assets/logo-somtec.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <img src="assets/logo-somtec.png" alt="Somtec" class="brand-logo">
+      <div>
+        <p class="eyebrow">Registro interno</p>
+        <h1>Horas Somtec</h1>
+      </div>
+    </div>
+    <div class="header-status">
+      <span id="todayLabel"></span>
+      <span class="status-pill" id="storageStatus">Local</span>
+    </div>
+  </header>
+
+  <nav class="tabs" aria-label="Vistas">
+    <button class="tab active" data-tab="registro">Registro</button>
+    <button class="tab" data-tab="historial">Historial</button>
+    <button class="tab" data-tab="config">Config</button>
+  </nav>
+
+  <main>
+    <section id="registro" class="view active">
+      <div class="toolbar">
+        <div>
+          <p class="eyebrow">Equipo</p>
+          <h2>Fichaje por proyecto o labor</h2>
+        </div>
+        <button class="secondary" id="manualEntryBtn">Añadir horas</button>
+      </div>
+      <div id="employeeGrid" class="employee-grid"></div>
+    </section>
+
+    <section id="historial" class="view">
+      <div class="toolbar">
+        <div>
+          <p class="eyebrow">Registros</p>
+          <h2>Historial de horas</h2>
+        </div>
+        <div class="actions">
+          <button class="secondary" id="exportCsvBtn">Exportar CSV</button>
+          <button class="secondary" id="exportJsonBtn">Copia JSON</button>
+          <label class="secondary file-label">Importar JSON<input id="importJsonInput" type="file" accept="application/json"></label>
+        </div>
+      </div>
+      <div class="filters">
+        <label>Empleado<select id="employeeFilter"></select></label>
+        <label>Tarea<select id="categoryFilter"></select></label>
+        <label>Desde<input id="fromFilter" type="date"></label>
+        <label>Hasta<input id="toFilter" type="date"></label>
+      </div>
+      <div id="historyList" class="table-list"></div>
+    </section>
+
+    <section id="config" class="view">
+      <div class="toolbar">
+        <div>
+          <p class="eyebrow">Administración</p>
+          <h2>Equipo y tareas</h2>
+        </div>
+      </div>
+      <div class="split">
+        <div class="config-block">
+          <div class="config-title">
+            <h3>Trabajadores</h3>
+            <button class="secondary" data-action="open-add-employee">Añadir trabajador</button>
+          </div>
+          <div id="configEmployees" class="table-list"></div>
+        </div>
+        <div class="config-block">
+          <div class="config-title">
+            <h3>Tareas y subtareas</h3>
+            <button class="secondary" data-action="open-add-task">Añadir tarea</button>
+          </div>
+          <div id="configTasks" class="table-list"></div>
+        </div>
+      </div>
+      <div class="panel backup-panel">
+        <div>
+          <h3>Copia de seguridad</h3>
+          <p class="muted">Exporta o importa los datos locales del navegador.</p>
+        </div>
+        <div class="actions">
+          <button class="secondary" id="configExportJsonBtn">Descargar JSON</button>
+          <label class="secondary file-label">Importar JSON<input id="configImportJsonInput" type="file" accept="application/json"></label>
+          <button class="danger" id="resetDemoBtn">Reiniciar datos</button>
+        </div>
+      </div>
+      <p class="note">Los datos se guardan en este navegador. Para uso compartido entre varios dispositivos hace falta conectar una base de datos propia de Somtec.</p>
+    </section>
+  </main>
+
+  <dialog id="taskDialog">
+    <form method="dialog" id="taskDialogForm" class="dialog-card">
+      <div>
+        <p class="eyebrow" id="dialogMode">Nueva tarea</p>
+        <h2 id="dialogTitle">Registrar trabajo</h2>
+      </div>
+      <input id="dialogEmployeeId" type="hidden">
+      <label>Trabajador<select id="dialogEmployee"></select></label>
+      <label>Tarea<select id="dialogCategory"></select></label>
+      <label>Proyecto o labor<input id="dialogProject" required placeholder="Cliente, proyecto, facturación..."></label>
+      <label>Subtarea<select id="dialogTask"></select></label>
+      <label>Subtarea personalizada<input id="dialogCustomTask" placeholder="Opcional"></label>
+      <div id="manualFields" class="manual-fields">
+        <label>Fecha<input id="manualDate" type="date"></label>
+        <label>Inicio<input id="manualStart" type="time"></label>
+        <label>Horas<input id="manualHours" type="number" min="0.05" step="0.25" placeholder="2.5"></label>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="secondary" id="cancelDialogBtn">Cancelar</button>
+        <button type="submit" id="confirmTaskBtn">Empezar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
