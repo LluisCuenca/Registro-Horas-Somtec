@@ -1,0 +1,23 @@
+#!/bin/sh
+
+if [ "$SOMTEC_SKIP_AUTO_PUSH" = "1" ]; then
+  echo "Somtec autopush omitido por SOMTEC_SKIP_AUTO_PUSH=1."
+  exit 0
+fi
+
+branch="$(git branch --show-current 2>/dev/null)"
+
+if [ "$branch" != "main" ]; then
+  echo "Somtec autopush omitido: la rama actual es '$branch', no 'main'."
+  exit 0
+fi
+
+echo "Somtec autopush: subiendo cambios a origin/main..."
+
+if /usr/bin/git push -u origin HEAD:main; then
+  echo "Somtec autopush completado."
+else
+  echo "Somtec autopush no pudo completarse. Abre GitHub Desktop y pulsa 'Push origin', o autentica Git en Terminal."
+fi
+
+exit 0
