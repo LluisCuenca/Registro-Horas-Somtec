@@ -14,7 +14,7 @@ const DEFAULT_DATA = {
     Proyectos: ["Planificación", "Visita técnica", "Presupuesto", "Seguimiento", "Entrega"],
     Servicios: ["Instalación", "Mantenimiento", "Reparación", "Soporte cliente"],
     Administración: ["Compras", "Gestión interna", "Llamadas"],
-    Comercial: ["Contacto cliente", "Propuesta", "Reunion", "Cierre"]
+    Comercial: ["Contacto cliente", "Propuesta", "Reunión", "Cierre"]
   },
   records: []
 };
@@ -35,18 +35,64 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 function loadData() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (stored && Array.isArray(stored.employees) && stored.tasks && Array.isArray(stored.records)) {
-      return stored;
-    }
+    if (isValidData(stored)) return normalizeData(stored);
   } catch (_) {}
-  return structuredClone(DEFAULT_DATA);
+  return clone(DEFAULT_DATA);
+}
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
 }
 
 function isValidData(value) {
   return value && Array.isArray(value.employees) && value.tasks && Array.isArray(value.records);
 }
 
+function normalizeData(value) {
+  const normalized = {
+    employees: Array.isArray(value.employees) ? value.employees : [],
+    tasks: value.tasks && typeof value.tasks === "object" ? value.tasks : {},
+    records: Array.isArray(value.records) ? value.records : []
+  };
+  normalized.records = normalized.records.map(normalizeRecord).filter(Boolean);
+  Object.keys(normalized.tasks).forEach((task) => {
+    if (!Array.isArray(normalized.tasks[task])) normalized.tasks[task] = [];
+  });
+  return normalized;
+}
+
+function normalizeRecord(record) {
+  if (!record) return null;
+  const startAt = record.startAt || record.startTime;
+  if (!startAt) return null;
+  const endAt = record.endAt ?? record.endTime ?? null;
+  const type = record.type || (record.overtime ? "overtime" : record.category === "Vacaciones" ? "vacation" : "normal");
+  const elapsedMs = Number.isFinite(Number(record.elapsedMs))
+    ? Number(record.elapsedMs)
+    : endAt
+      ? Math.max(0, new Date(endAt) - new Date(startAt))
+      : 0;
+  return {
+    id: String(record.id || uid("r")),
+    employeeId: String(record.employeeId || ""),
+    employeeName: record.employeeName || "Trabajador",
+    category: record.category || typeLabel(type),
+    project: record.project || record.categoryName || (type === "vacation" ? "Vacaciones" : "Proyecto"),
+    task: record.task || record.subName || (type === "vacation" ? "Vacaciones" : "General"),
+    type,
+    startAt: new Date(startAt).toISOString(),
+    endAt: endAt ? new Date(endAt).toISOString() : null,
+    elapsedMs,
+    lastStartedAt: record.lastStartedAt || (endAt ? null : new Date(startAt).toISOString()),
+    running: Boolean(record.running && !endAt),
+    pauses: Array.isArray(record.pauses) ? record.pauses : [],
+    manual: Boolean(record.manual || type !== "normal"),
+    overtime: type === "overtime"
+  };
+}
+
 function saveData() {
+  data = normalizeData(data);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   setStorageStatus(remoteRef ? "Guardando" : "Local");
   if (remoteRef && !applyingRemote) {
@@ -80,10 +126,9 @@ function initRemoteSync() {
       const remoteData = snapshot.val();
       if (isValidData(remoteData)) {
         applyingRemote = true;
-        data = remoteData;
+        data = normalizeData(remoteData);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
         renderFilters();
-        updateDialogTasks();
         render();
         applyingRemote = false;
         setStorageStatus("Firebase");
@@ -110,8 +155,8 @@ function dateKey(date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function formatDateTime(value) {
-  return new Date(value).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" });
+function dateFromKey(key) {
+  return new Date(`${key}T12:00:00`);
 }
 
 function formatTime(ms) {
@@ -122,16 +167,30 @@ function formatTime(ms) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+function formatClock(value) {
+  return new Date(value).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+}
+
 function hoursFromMs(ms) {
   return ms / 3600000;
 }
 
+function msFromHours(hours) {
+  return Math.round(Number(hours) * 3600000);
+}
+
 function currentElapsed(record) {
-  return record.elapsedMs + (record.running ? now() - new Date(record.lastStartedAt) : 0);
+  return Number(record.elapsedMs || 0) + (record.running ? now() - new Date(record.lastStartedAt || record.startAt) : 0);
 }
 
 function initials(name) {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+  return String(name || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
 }
 
 function getActiveRecord(employeeId) {
@@ -143,98 +202,161 @@ function completedRecords() {
 }
 
 function recordHours(record) {
-  return hoursFromMs(record.endAt ? record.elapsedMs : currentElapsed(record));
+  return hoursFromMs(record.endAt ? Number(record.elapsedMs || 0) : currentElapsed(record));
 }
 
-function startRecord(employeeId, category, project, task) {
+function recordType(record) {
+  return record.type || (record.overtime ? "overtime" : record.category === "Vacaciones" ? "vacation" : "normal");
+}
+
+function typeLabel(type) {
+  if (type === "overtime") return "Horas extras";
+  if (type === "vacation") return "Vacaciones";
+  return "Horas normales";
+}
+
+function typeClass(type) {
+  if (type === "overtime") return "overtime";
+  if (type === "vacation") return "vacation";
+  return "normal";
+}
+
+function activityLabel(record) {
+  if (recordType(record) === "vacation") return "Vacaciones";
+  return `${record.project || "Proyecto"} / ${record.task || "Subtarea"}`;
+}
+
+function subtaskOptions() {
+  const seen = new Set();
+  const options = [];
+  Object.values(data.tasks).forEach((items) => {
+    items.forEach((item) => {
+      const value = item.trim();
+      if (value && !seen.has(value)) {
+        seen.add(value);
+        options.push(value);
+      }
+    });
+  });
+  if (!options.length) options.push("General");
+  return options;
+}
+
+function startRecord(employeeId, project, task) {
   const employee = data.employees.find((item) => item.id === employeeId);
-  if (!employee) return;
-  if (getActiveRecord(employeeId)) return;
+  if (!employee || getActiveRecord(employeeId)) return;
+  const startedAt = now().toISOString();
   data.records.push({
     id: uid("r"),
     employeeId,
     employeeName: employee.name,
-    category,
+    category: "Horas normales",
     project,
     task,
-    startAt: now().toISOString(),
+    type: "normal",
+    startAt: startedAt,
     endAt: null,
     elapsedMs: 0,
-    lastStartedAt: now().toISOString(),
+    lastStartedAt: startedAt,
     running: true,
     pauses: [],
-    manual: false
+    manual: false,
+    overtime: false
   });
   saveData();
   render();
-  toast("Cronometro iniciado");
-}
-
-function pauseRecord(recordId) {
-  const record = data.records.find((item) => item.id === recordId);
-  if (!record || !record.running) return;
-  const pausedAt = now();
-  record.elapsedMs = currentElapsed(record);
-  record.running = false;
-  record.pauses.push({ start: pausedAt.toISOString(), end: null });
-  saveData();
-  render();
-}
-
-function resumeRecord(recordId) {
-  const record = data.records.find((item) => item.id === recordId);
-  if (!record || record.running) return;
-  const resumedAt = now();
-  const lastPause = record.pauses[record.pauses.length - 1];
-  if (lastPause && !lastPause.end) lastPause.end = resumedAt.toISOString();
-  record.lastStartedAt = resumedAt.toISOString();
-  record.running = true;
-  saveData();
-  render();
+  toast("Entrada registrada");
 }
 
 function finishRecord(recordId) {
   const record = data.records.find((item) => item.id === recordId);
   if (!record || record.endAt) return;
-  if (record.running) record.elapsedMs = currentElapsed(record);
+  record.elapsedMs = currentElapsed(record);
   record.running = false;
   record.endAt = now().toISOString();
   const lastPause = record.pauses[record.pauses.length - 1];
   if (lastPause && !lastPause.end) lastPause.end = record.endAt;
   saveData();
   render();
-  toast("Registro guardado en historial");
+  toast("Salida registrada");
 }
 
-function addManualRecord(employeeId, category, project, task, dateValue, startValue, hoursValue) {
+function addManualRecord(employeeId, project, task, dateValue, startValue, hoursValue, type = "normal") {
   const employee = data.employees.find((item) => item.id === employeeId);
   const hours = Number(hoursValue);
   if (!employee || !dateValue || !startValue || !Number.isFinite(hours) || hours <= 0) return false;
   const startAt = new Date(`${dateValue}T${startValue}:00`);
-  const elapsedMs = Math.round(hours * 3600000);
+  const elapsedMs = msFromHours(hours);
   data.records.push({
     id: uid("r"),
     employeeId,
     employeeName: employee.name,
-    category,
-    project,
-    task,
+    category: typeLabel(type),
+    project: project || typeLabel(type),
+    task: task || typeLabel(type),
+    type,
     startAt: startAt.toISOString(),
     endAt: new Date(startAt.getTime() + elapsedMs).toISOString(),
     elapsedMs,
     lastStartedAt: null,
     running: false,
     pauses: [],
-    manual: true
+    manual: true,
+    overtime: type === "overtime"
   });
   saveData();
   render();
-  toast("Horas añadidas");
+  toast(type === "overtime" ? "Horas extras añadidas" : "Horas añadidas");
+  return true;
+}
+
+function addVacationRecords(employeeId, fromValue, toValue, hoursValue) {
+  const employee = data.employees.find((item) => item.id === employeeId);
+  const hours = Number(hoursValue);
+  if (!employee || !fromValue || !toValue || !Number.isFinite(hours) || hours <= 0) return false;
+  const from = new Date(`${fromValue}T00:00:00`);
+  const to = new Date(`${toValue}T00:00:00`);
+  if (to < from) return false;
+  let created = 0;
+  for (let day = new Date(from); day <= to; day = addDays(day, 1)) {
+    if (day.getDay() === 0 || day.getDay() === 6) continue;
+    const key = dateKey(day);
+    addManualRecord(employeeId, "Vacaciones", "Vacaciones", key, "09:00", hours, "vacation");
+    created += 1;
+  }
+  if (!created) toast("No hay dias laborables en ese rango");
+  else toast("Vacaciones añadidas");
+  return created > 0;
+}
+
+function updateRecord(recordId, values) {
+  const record = data.records.find((item) => item.id === recordId);
+  const employee = data.employees.find((item) => item.id === values.employeeId);
+  const hours = Number(values.hours);
+  if (!record || !employee || !values.date || !values.start || !Number.isFinite(hours) || hours <= 0) return false;
+  const startAt = new Date(`${values.date}T${values.start}:00`);
+  const elapsedMs = msFromHours(hours);
+  record.employeeId = employee.id;
+  record.employeeName = employee.name;
+  record.type = values.type;
+  record.category = typeLabel(values.type);
+  record.project = values.project || typeLabel(values.type);
+  record.task = values.task || typeLabel(values.type);
+  record.startAt = startAt.toISOString();
+  record.endAt = new Date(startAt.getTime() + elapsedMs).toISOString();
+  record.elapsedMs = elapsedMs;
+  record.lastStartedAt = null;
+  record.running = false;
+  record.manual = true;
+  record.overtime = values.type === "overtime";
+  saveData();
+  render();
+  toast("Registro actualizado");
   return true;
 }
 
 function deleteRecord(recordId) {
-  if (!confirm("Eliminar este registro de horas?")) return;
+  if (!confirm("Eliminar este registro?")) return;
   data.records = data.records.filter((item) => item.id !== recordId);
   saveData();
   render();
@@ -244,14 +366,14 @@ function renderEmployeeGrid() {
   $("#employeeGrid").innerHTML = data.employees.map((employee) => {
     const active = getActiveRecord(employee.id);
     const timer = active ? formatTime(currentElapsed(active)) : "00:00:00";
-    const state = active ? (active.running ? "running" : "paused") : "";
+    const state = active ? "running" : "";
+    const week = weekTotalsForEmployee(employee.id);
     const task = active
-      ? `${active.category} / ${active.project}<br><strong>${active.task}</strong>`
-      : "Sin tarea activa.";
+      ? `${escapeHtml(active.project)}<br><strong>${escapeHtml(active.task)}</strong>`
+      : "Sin entrada activa.";
     const buttons = active
-      ? `<button class="secondary" data-action="${active.running ? "pause" : "resume"}" data-id="${active.id}">${active.running ? "Pausar" : "Reanudar"}</button>
-         <button data-action="finish" data-id="${active.id}">Finalizar</button>`
-      : `<button class="full" data-action="open-start" data-employee="${employee.id}">Empezar tarea</button>`;
+      ? `<button class="full" data-action="finish" data-id="${active.id}">Registrar salida</button>`
+      : `<button class="full" data-action="open-start" data-employee="${employee.id}">Registrar entrada</button>`;
     return `<article class="employee-card">
       <div class="employee-top">
         <div>
@@ -263,14 +385,37 @@ function renderEmployeeGrid() {
       <div class="state-dot ${state}"></div>
       <div class="timer">${timer}</div>
       <div class="task-line">${task}</div>
+      <div class="week-mini">
+        <span>${week.normal.toFixed(1)}h normales</span>
+        <span>${week.overtime.toFixed(1)}h extras</span>
+        <span>${week.vacation.toFixed(1)}h vacaciones</span>
+      </div>
       <div class="card-actions">${buttons}</div>
     </article>`;
-  }).join("") || `<div class="empty">Añade trabajadores en Config para empezar.</div>`;
+  }).join("") || `<div class="empty">Añade trabajadores en Configuración para empezar.</div>`;
+}
+
+function weekTotalsForEmployee(employeeId) {
+  const from = startOfISOWeekInput(getWeekInputValue(new Date()));
+  const to = endOfDay(addDays(from, 6));
+  const totals = { normal: 0, overtime: 0, vacation: 0 };
+  recordsInRange(from, to).filter((record) => record.employeeId === employeeId).forEach((record) => {
+    totals[recordType(record)] += recordHours(record);
+  });
+  return totals;
 }
 
 function renderFilters() {
-  $("#dialogEmployee").innerHTML = data.employees.map((employee) => `<option value="${employee.id}">${escapeHtml(employee.name)}</option>`).join("");
-  $("#dialogCategory").innerHTML = Object.keys(data.tasks).map((category) => `<option value="${escapeAttr(category)}">${escapeHtml(category)}</option>`).join("");
+  const employeeOptions = data.employees.map((employee) => `<option value="${employee.id}">${escapeHtml(employee.name)}</option>`).join("");
+  const taskOptions = subtaskOptions().map((task) => `<option value="${escapeAttr(task)}">${escapeHtml(task)}</option>`).join("");
+  ["dialogEmployee", "editEmployee", "vacationEmployee"].forEach((id) => {
+    const el = $(`#${id}`);
+    if (el) el.innerHTML = employeeOptions;
+  });
+  ["dialogTask", "editTask"].forEach((id) => {
+    const el = $(`#${id}`);
+    if (el) el.innerHTML = taskOptions;
+  });
 }
 
 function filteredHistory() {
@@ -293,25 +438,22 @@ function recordsInRange(from, to) {
 }
 
 function getPeriodRange() {
+  const selected = dateFromKey(selectedDate);
   if (historyMode === "week") {
-    const weekValue = $("#periodWeek")?.value || getWeekInputValue(new Date(selectedDate));
-    const from = startOfISOWeekInput(weekValue);
+    const from = startOfISOWeekInput(getWeekInputValue(selected));
     const to = endOfDay(addDays(from, 6));
-    return { from, to, label: `Semana ${weekValue.split("-W")[1]} · ${formatDateShort(from)} - ${formatDateShort(to)}` };
+    return { from, to, label: `Semana ${getWeekInputValue(selected).split("-W")[1]} · ${formatDateShort(from)} - ${formatDateShort(to)}` };
   }
   if (historyMode === "month") {
-    const monthValue = $("#periodMonth")?.value || selectedDate.slice(0, 7);
-    const [year, month] = monthValue.split("-").map(Number);
-    const from = new Date(year, month - 1, 1, 0, 0, 0, 0);
-    const to = endOfDay(new Date(year, month, 0));
+    const from = new Date(selected.getFullYear(), selected.getMonth(), 1, 0, 0, 0, 0);
+    const to = endOfDay(new Date(selected.getFullYear(), selected.getMonth() + 1, 0));
     return { from, to, label: from.toLocaleDateString("es-ES", { month: "long", year: "numeric" }) };
   }
   if (historyMode === "year") {
-    const year = Number($("#periodYear")?.value || new Date(selectedDate).getFullYear());
+    const year = selected.getFullYear();
     return { from: new Date(year, 0, 1, 0, 0, 0, 0), to: endOfDay(new Date(year, 11, 31)), label: String(year) };
   }
-  const dateValue = $("#periodDate")?.value || selectedDate;
-  const from = new Date(`${dateValue}T00:00:00`);
+  const from = new Date(`${selectedDate}T00:00:00`);
   const to = endOfDay(from);
   return { from, to, label: formatDateLong(from) };
 }
@@ -322,78 +464,136 @@ function renderPeriodControls() {
   $("#periodWeekWrap").classList.toggle("hidden", historyMode !== "week");
   $("#periodMonthWrap").classList.toggle("hidden", historyMode !== "month");
   $("#periodYearWrap").classList.toggle("hidden", historyMode !== "year");
+  const selected = dateFromKey(selectedDate);
   $("#periodDate").value = selectedDate;
-  $("#periodWeek").value = getWeekInputValue(new Date(selectedDate));
+  $("#periodWeek").value = getWeekInputValue(selected);
   $("#periodMonth").value = selectedDate.slice(0, 7);
-  $("#periodYear").value = new Date(selectedDate).getFullYear();
+  $("#periodYear").value = selected.getFullYear();
 }
 
 function renderCalendar() {
   const wrap = $("#calendarWrap");
   if (!wrap) return;
-  const selected = new Date(`${selectedDate}T12:00:00`);
+  const selected = dateFromKey(selectedDate);
   const year = selected.getFullYear();
   const month = selected.getMonth();
   const first = new Date(year, month, 1);
   const startOffset = (first.getDay() + 6) % 7;
   const gridStart = addDays(first, -startOffset);
   const range = getPeriodRange();
+  const monthLabel = first.toLocaleDateString("es-ES", { month: "long", year: "numeric" });
   let html = `<div class="calendar-shell">
+    <div class="calendar-titlebar">
+      <button class="secondary" data-action="prev-calendar-month">Anterior</button>
+      <strong>${escapeHtml(monthLabel)}</strong>
+      <button class="secondary" data-action="next-calendar-month">Siguiente</button>
+    </div>
     <div class="calendar-head">${DAY_NAMES.map((day) => `<div>${day}</div>`).join("")}</div>
     <div class="calendar-grid">`;
   for (let i = 0; i < 42; i += 1) {
     const day = addDays(gridStart, i);
     const key = dateKey(day);
     const rows = recordsInRange(new Date(`${key}T00:00:00`), endOfDay(day));
+    const totals = totalsByType(rows);
     const total = rows.reduce((sum, record) => sum + recordHours(record), 0);
     const workerChips = summarizeByEmployee(rows).slice(0, 2).map((item) => `<span class="day-chip">${escapeHtml(initials(item.name))} ${item.hours.toFixed(1)}h</span>`).join("");
     const isSelected = day >= startOfDay(range.from) && day <= range.to;
     html += `<button class="calendar-day ${day.getMonth() !== month ? "muted-day" : ""} ${isSelected ? "selected" : ""}" data-action="select-calendar-day" data-date="${key}">
       <span class="day-number">${day.getDate()}</span>
-      ${total ? `<span class="day-hours">${total.toFixed(1)}h</span>${workerChips}` : `<span class="day-hours">-</span>`}
+      ${total ? `<span class="day-hours">${total.toFixed(1)}h</span>${workerChips}${calendarTypeDots(totals)}` : `<span class="day-hours">-</span>`}
     </button>`;
   }
   html += `</div></div>`;
   wrap.innerHTML = html;
 }
 
+function calendarTypeDots(totals) {
+  const items = [
+    ["normal", totals.normal],
+    ["overtime", totals.overtime],
+    ["vacation", totals.vacation]
+  ].filter((item) => item[1] > 0);
+  if (!items.length) return "";
+  return `<span class="calendar-dots">${items.map(([type]) => `<span class="type-dot ${typeClass(type)}"></span>`).join("")}</span>`;
+}
+
 function renderPeriodPanel() {
   const panel = $("#periodPanel");
   const { from, to, label } = getPeriodRange();
-  const rows = recordsInRange(from, to);
+  const rows = recordsInRange(from, to).sort((a, b) => new Date(a.startAt) - new Date(b.startAt));
+  const totals = totalsByType(rows);
   const total = rows.reduce((sum, record) => sum + recordHours(record), 0);
   const activeDays = new Set(rows.map((record) => dateKey(record.startAt))).size;
   const workerCards = data.employees.map((employee) => renderWorkerPeriodCard(employee, rows)).join("");
   panel.innerHTML = `<div class="period-panel">
     <div class="period-summary">
-      <div class="period-metric"><span class="muted">Periodo</span><strong>${escapeHtml(label)}</strong></div>
+      <div class="period-metric period-label"><span class="muted">Periodo</span><strong>${escapeHtml(label)}</strong></div>
       <div class="period-metric"><span class="muted">Total</span><strong>${total.toFixed(2)} h</strong></div>
-      <div class="period-metric"><span class="muted">Dias con actividad</span><strong>${activeDays}</strong></div>
-      <div class="period-metric"><span class="muted">Registros</span><strong>${rows.length}</strong></div>
+      <div class="period-metric"><span class="muted">Horas normales</span><strong>${totals.normal.toFixed(2)} h</strong></div>
+      <div class="period-metric"><span class="muted">Horas extras</span><strong>${totals.overtime.toFixed(2)} h</strong></div>
+      <div class="period-metric"><span class="muted">Vacaciones</span><strong>${totals.vacation.toFixed(2)} h</strong></div>
+      <div class="period-metric"><span class="muted">Días con actividad</span><strong>${activeDays}</strong></div>
     </div>
     <div class="worker-period-grid">${workerCards}</div>
   </div>`;
 }
 
+function totalsByType(records) {
+  const totals = { normal: 0, overtime: 0, vacation: 0 };
+  records.forEach((record) => {
+    totals[recordType(record)] = (totals[recordType(record)] || 0) + recordHours(record);
+  });
+  return totals;
+}
+
 function renderWorkerPeriodCard(employee, periodRecords) {
   const rows = periodRecords.filter((record) => record.employeeId === employee.id);
   const total = rows.reduce((sum, record) => sum + recordHours(record), 0);
+  const totals = totalsByType(rows);
   const breakdown = new Map();
   rows.forEach((record) => {
-    const key = `${record.category} / ${record.project} / ${record.task}`;
-    breakdown.set(key, (breakdown.get(key) || 0) + recordHours(record));
+    const type = recordType(record);
+    const key = type === "vacation" ? "Vacaciones" : `${record.project || "Proyecto"} / ${record.task || "Subtarea"}`;
+    const item = breakdown.get(key) || { hours: 0, type };
+    item.hours += recordHours(record);
+    breakdown.set(key, item);
   });
   const breakdownRows = Array.from(breakdown.entries())
-    .sort((a, b) => b[1] - a[1])
-    .map(([label, hours]) => `<div class="breakdown-row"><span><strong>${escapeHtml(label.split(" / ")[0])}</strong><br>${escapeHtml(label.split(" / ").slice(1).join(" / "))}</span><span class="breakdown-hours">${hours.toFixed(2)}h</span></div>`)
+    .sort((a, b) => b[1].hours - a[1].hours)
+    .map(([label, item]) => `<div class="breakdown-row">
+      <span><strong>${escapeHtml(label)}</strong><br><span class="type-pill ${typeClass(item.type)}">${escapeHtml(typeLabel(item.type))}</span></span>
+      <span class="breakdown-hours">${item.hours.toFixed(2)}h</span>
+    </div>`)
     .join("") || `<div class="muted">Sin horas registradas en este periodo.</div>`;
+  const recordRows = rows.length ? rows.map(renderRecordRow).join("") : "";
   return `<article class="worker-period-card">
     <div class="worker-period-head">
       <div><strong>${escapeHtml(employee.name)}</strong><br><span class="muted">${escapeHtml(employee.role)}</span></div>
       <div class="worker-period-total">${total.toFixed(1)}h</div>
     </div>
+    <div class="worker-type-totals">
+      <span>${totals.normal.toFixed(1)}h normales</span>
+      <span>${totals.overtime.toFixed(1)}h extras</span>
+      <span>${totals.vacation.toFixed(1)}h vacaciones</span>
+    </div>
     <div class="breakdown-list">${breakdownRows}</div>
+    ${recordRows ? `<div class="record-list">${recordRows}</div>` : ""}
   </article>`;
+}
+
+function renderRecordRow(record) {
+  const type = recordType(record);
+  return `<div class="record-row">
+    <div>
+      <div class="record-title">${escapeHtml(activityLabel(record))}</div>
+      <div class="record-meta">${escapeHtml(typeLabel(type))} · ${formatDateShort(new Date(record.startAt))} · ${formatClock(record.startAt)} - ${formatClock(record.endAt)}</div>
+    </div>
+    <div class="record-actions">
+      <span class="hours">${recordHours(record).toFixed(2)}h</span>
+      <button class="secondary" data-action="edit-record" data-id="${record.id}">Editar</button>
+      <button class="danger" data-action="delete-record" data-id="${record.id}">Eliminar</button>
+    </div>
+  </div>`;
 }
 
 function summarizeByEmployee(records) {
@@ -422,6 +622,16 @@ function addDays(date, days) {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
   return d;
+}
+
+function shiftCalendarMonth(delta) {
+  const selected = dateFromKey(selectedDate);
+  const desiredDay = selected.getDate();
+  const next = new Date(selected.getFullYear(), selected.getMonth() + delta, 1, 12, 0, 0, 0);
+  const maxDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+  next.setDate(Math.min(desiredDay, maxDay));
+  selectedDate = dateKey(next);
+  renderHistory();
 }
 
 function formatDateShort(date) {
@@ -454,13 +664,6 @@ function startOfISOWeekInput(value) {
   return monday;
 }
 
-function syncSelectedDateFromPeriodInput() {
-  if (historyMode === "day") selectedDate = $("#periodDate").value || selectedDate;
-  if (historyMode === "week") selectedDate = dateKey(startOfISOWeekInput($("#periodWeek").value || getWeekInputValue(new Date(selectedDate))));
-  if (historyMode === "month") selectedDate = `${$("#periodMonth").value || selectedDate.slice(0, 7)}-01`;
-  if (historyMode === "year") selectedDate = `${$("#periodYear").value || new Date(selectedDate).getFullYear()}-01-01`;
-}
-
 function renderConfig() {
   $("#configEmployees").innerHTML = renderEmployeesConfig();
   $("#configTasks").innerHTML = renderTasksConfig();
@@ -486,7 +689,7 @@ function employeeEditorRow(employee = {}) {
   return `<div class="table-row edit-row">
     <div class="edit-grid">
       <label>Nombre<input id="configEmployeeName" value="${escapeAttr(employee.name || "")}" placeholder="Nombre y apellidos"></label>
-      <label>Puesto<input id="configEmployeeRole" value="${escapeAttr(employee.role || "")}" placeholder="Tecnico, oficina..."></label>
+      <label>Puesto<input id="configEmployeeRole" value="${escapeAttr(employee.role || "")}" placeholder="Técnico, oficina..."></label>
     </div>
     <div class="row-actions">
       <button data-action="save-employee" data-id="${employee.id || ""}">${isNew ? "Añadir" : "Guardar"}</button>
@@ -514,8 +717,8 @@ function taskEditorRow(task = "", subtasks = []) {
   const isNew = !task;
   return `<div class="table-row edit-row">
     <div class="edit-grid single">
-      <label>Tarea principal<input id="configTaskName" value="${escapeAttr(task)}" placeholder="Facturacion"></label>
-      <label>Subtareas, una por linea<textarea id="configSubtasks" placeholder="Interna&#10;Externa">${escapeHtml(subtasks.join("\n"))}</textarea></label>
+      <label>Tarea principal<input id="configTaskName" value="${escapeAttr(task)}" placeholder="Facturación"></label>
+      <label>Subtareas, una por línea<textarea id="configSubtasks" placeholder="Interna&#10;Externa">${escapeHtml(subtasks.join("\n"))}</textarea></label>
     </div>
     <div class="row-actions">
       <button data-action="save-task" data-task="${escapeAttr(task)}">${isNew ? "Añadir" : "Guardar"}</button>
@@ -531,25 +734,23 @@ function render() {
   renderConfig();
 }
 
-function updateDialogTasks() {
-  const category = $("#dialogCategory").value;
-  $("#dialogTask").innerHTML = (data.tasks[category] || []).map((task) => `<option value="${escapeAttr(task)}">${escapeHtml(task)}</option>`).join("");
-}
-
 function openTaskDialog(employeeId = "", mode = "timer") {
   dialogMode = mode;
   editingEmployeeId = employeeId;
   $("#taskDialogForm").reset();
-  $("#dialogMode").textContent = mode === "manual" ? "Ajuste manual" : "Nueva tarea";
-  $("#dialogTitle").textContent = mode === "manual" ? "Añadir horas trabajadas" : "Registrar trabajo";
-  $("#confirmTaskBtn").textContent = mode === "manual" ? "Guardar horas" : "Empezar";
-  $("#manualFields").classList.toggle("active", mode === "manual");
+  const isManual = mode !== "timer";
+  $("#dialogMode").textContent = mode === "overtime" ? "Horas extras" : isManual ? "Ajuste manual" : "Entrada";
+  $("#dialogTitle").textContent = mode === "overtime" ? "Añadir horas extras" : isManual ? "Añadir horas trabajadas" : "Registrar entrada";
+  $("#confirmTaskBtn").textContent = mode === "overtime" ? "Guardar extras" : isManual ? "Guardar horas" : "Registrar entrada";
+  $("#manualFields").classList.toggle("active", isManual);
+  $("#dialogEmployeeWrap").classList.toggle("hidden", !isManual);
   $("#dialogEmployee").disabled = Boolean(employeeId);
   $("#dialogEmployee").value = employeeId || data.employees[0]?.id || "";
   $("#dialogEmployeeId").value = employeeId;
-  $("#manualDate").value = dateKey(now());
+  $("#manualDate").value = selectedDate || dateKey(now());
   $("#manualStart").value = "09:00";
-  updateDialogTasks();
+  $("#manualHours").value = mode === "overtime" ? "1" : "";
+  renderFilters();
   $("#taskDialog").showModal();
 }
 
@@ -561,24 +762,90 @@ function closeTaskDialog() {
 function handleDialogSubmit(event) {
   event.preventDefault();
   const employeeId = editingEmployeeId || $("#dialogEmployee").value;
-  const category = $("#dialogCategory").value;
   const project = $("#dialogProject").value.trim();
-  const task = ($("#dialogCustomTask").value.trim() || $("#dialogTask").value).trim();
-  if (!employeeId || !category || !project || !task) return;
-  if (dialogMode === "manual") {
-    if (!addManualRecord(employeeId, category, project, task, $("#manualDate").value, $("#manualStart").value, $("#manualHours").value)) {
-      toast("Revisa fecha, hora y duracion");
+  const task = $("#dialogTask").value.trim();
+  if (!employeeId || !project || !task) return;
+  if (dialogMode === "manual" || dialogMode === "overtime") {
+    const type = dialogMode === "overtime" ? "overtime" : "normal";
+    if (!addManualRecord(employeeId, project, task, $("#manualDate").value, $("#manualStart").value, $("#manualHours").value, type)) {
+      toast("Revisa fecha, hora y duración");
       return;
     }
   } else {
-    startRecord(employeeId, category, project, task);
+    startRecord(employeeId, project, task);
   }
   closeTaskDialog();
 }
 
+function openVacationDialog() {
+  $("#vacationDialogForm").reset();
+  renderFilters();
+  $("#vacationEmployee").value = data.employees[0]?.id || "";
+  $("#vacationFrom").value = selectedDate || dateKey(now());
+  $("#vacationTo").value = selectedDate || dateKey(now());
+  $("#vacationHours").value = "8";
+  $("#vacationDialog").showModal();
+}
+
+function closeVacationDialog() {
+  $("#vacationDialog").close();
+}
+
+function handleVacationSubmit(event) {
+  event.preventDefault();
+  if (!addVacationRecords($("#vacationEmployee").value, $("#vacationFrom").value, $("#vacationTo").value, $("#vacationHours").value)) {
+    toast("Revisa las vacaciones");
+    return;
+  }
+  closeVacationDialog();
+}
+
+function openRecordDialog(recordId) {
+  const record = data.records.find((item) => item.id === recordId);
+  if (!record || !record.endAt) return;
+  renderFilters();
+  $("#editRecordId").value = record.id;
+  $("#editEmployee").value = record.employeeId;
+  $("#editType").value = recordType(record);
+  $("#editProject").value = record.project || "";
+  $("#editTask").value = record.task || subtaskOptions()[0] || "General";
+  $("#editDate").value = dateKey(record.startAt);
+  $("#editStart").value = new Date(record.startAt).toTimeString().slice(0, 5);
+  $("#editHours").value = recordHours(record).toFixed(2);
+  $("#recordDialog").showModal();
+}
+
+function closeRecordDialog() {
+  $("#recordDialog").close();
+}
+
+function handleRecordSubmit(event) {
+  event.preventDefault();
+  const ok = updateRecord($("#editRecordId").value, {
+    employeeId: $("#editEmployee").value,
+    type: $("#editType").value,
+    project: $("#editProject").value.trim(),
+    task: $("#editTask").value.trim(),
+    date: $("#editDate").value,
+    start: $("#editStart").value,
+    hours: $("#editHours").value
+  });
+  if (ok) closeRecordDialog();
+  else toast("Revisa el registro");
+}
+
 function exportCsv() {
-  const header = ["trabajador", "tarea", "proyecto_labor", "subtarea", "inicio", "fin", "horas", "manual"];
-  const lines = filteredHistory().map((record) => [record.employeeName, record.category, record.project, record.task, record.startAt, record.endAt, recordHours(record).toFixed(2), record.manual ? "si" : "no"]);
+  const header = ["trabajador", "tipo", "proyecto", "subtarea", "inicio", "fin", "horas", "manual"];
+  const lines = filteredHistory().map((record) => [
+    record.employeeName,
+    typeLabel(recordType(record)),
+    record.project,
+    record.task,
+    record.startAt,
+    record.endAt,
+    recordHours(record).toFixed(2),
+    record.manual ? "si" : "no"
+  ]);
   downloadFile("registro-horas-somtec.csv", [header, ...lines].map((row) => row.map(csvCell).join(",")).join("\n"), "text/csv");
 }
 
@@ -628,10 +895,11 @@ function bindEvents() {
     if (!target) return;
     const { action, id, employee, task } = target.dataset;
     if (action === "open-start") openTaskDialog(employee, "timer");
-    if (action === "pause") pauseRecord(id);
-    if (action === "resume") resumeRecord(id);
     if (action === "finish") finishRecord(id);
     if (action === "delete-record") deleteRecord(id);
+    if (action === "edit-record") openRecordDialog(id);
+    if (action === "prev-calendar-month") shiftCalendarMonth(-1);
+    if (action === "next-calendar-month") shiftCalendarMonth(1);
     if (action === "select-calendar-day") {
       selectedDate = target.dataset.date;
       historyMode = "day";
@@ -679,12 +947,16 @@ function bindEvents() {
   });
 
   $("#manualEntryBtn").addEventListener("click", () => openTaskDialog("", "manual"));
+  $("#overtimeBtn").addEventListener("click", () => openTaskDialog("", "overtime"));
+  $("#vacationBtn").addEventListener("click", openVacationDialog);
   $("#cancelDialogBtn").addEventListener("click", closeTaskDialog);
   $("#taskDialogForm").addEventListener("submit", handleDialogSubmit);
-  $("#dialogCategory").addEventListener("change", updateDialogTasks);
+  $("#cancelVacationDialogBtn").addEventListener("click", closeVacationDialog);
+  $("#vacationDialogForm").addEventListener("submit", handleVacationSubmit);
+  $("#cancelRecordDialogBtn").addEventListener("click", closeRecordDialog);
+  $("#recordDialogForm").addEventListener("submit", handleRecordSubmit);
   $$(".period-tab").forEach((button) => button.addEventListener("click", () => {
     historyMode = button.dataset.period;
-    syncSelectedDateFromPeriodInput();
     renderHistory();
   }));
   $("#periodDate").addEventListener("change", () => {
@@ -692,7 +964,8 @@ function bindEvents() {
     renderHistory();
   });
   $("#periodWeek").addEventListener("change", () => {
-    selectedDate = dateKey(startOfISOWeekInput($("#periodWeek").value));
+    const value = $("#periodWeek").value;
+    if (value) selectedDate = dateKey(startOfISOWeekInput(value));
     renderHistory();
   });
   $("#periodMonth").addEventListener("change", () => {
@@ -713,7 +986,7 @@ function bindEvents() {
 
   $("#resetDemoBtn").addEventListener("click", () => {
     if (!confirm("Reiniciar todos los datos locales?")) return;
-    data = structuredClone(DEFAULT_DATA);
+    data = clone(DEFAULT_DATA);
     configState = {};
     saveData();
     renderFilters();
@@ -759,7 +1032,6 @@ function saveTaskConfig(previousName) {
   configState = {};
   saveData();
   renderFilters();
-  updateDialogTasks();
   render();
 }
 
@@ -768,12 +1040,12 @@ async function importJsonFromInput(event) {
     const file = event.target.files[0];
     if (!file) return;
     const imported = JSON.parse(await file.text());
-    if (!imported.employees || !imported.tasks || !imported.records) {
-      toast("Archivo JSON no valido");
+    if (!isValidData(imported)) {
+      toast("Archivo JSON no válido");
       event.target.value = "";
       return;
     }
-    data = imported;
+    data = normalizeData(imported);
     saveData();
     renderFilters();
     render();
@@ -786,7 +1058,6 @@ async function importJsonFromInput(event) {
 }
 
 renderFilters();
-updateDialogTasks();
 bindEvents();
 render();
 initRemoteSync();

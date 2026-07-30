@@ -35,12 +35,13 @@
 
   <main>
     <section id="registro" class="view active">
-      <div class="toolbar">
-        <div>
-          <p class="eyebrow">Registro</p>
-          <h2>Fichaje por proyecto o labor</h2>
+      <div class="toolbar compact-toolbar">
+        <div></div>
+        <div class="actions">
+          <button class="secondary" id="manualEntryBtn">Añadir horas</button>
+          <button class="secondary" id="overtimeBtn">Horas extras</button>
+          <button class="secondary" id="vacationBtn">Vacaciones</button>
         </div>
-        <button class="secondary" id="manualEntryBtn">Añadir horas</button>
       </div>
       <div id="employeeGrid" class="employee-grid"></div>
     </section>
@@ -120,15 +121,13 @@
         <h2 id="dialogTitle">Registrar trabajo</h2>
       </div>
       <input id="dialogEmployeeId" type="hidden">
-      <label>Trabajador<select id="dialogEmployee"></select></label>
-      <label>Tarea<select id="dialogCategory"></select></label>
-      <label>Proyecto o labor<input id="dialogProject" required placeholder="Cliente, proyecto, facturación..."></label>
+      <label id="dialogEmployeeWrap">Trabajador<select id="dialogEmployee"></select></label>
+      <label>Proyecto<input id="dialogProject" required placeholder="Cliente, obra, facturación..."></label>
       <label>Subtarea<select id="dialogTask"></select></label>
-      <label>Subtarea personalizada<input id="dialogCustomTask" placeholder="Opcional"></label>
       <div id="manualFields" class="manual-fields">
         <label>Fecha<input id="manualDate" type="date"></label>
         <label>Inicio<input id="manualStart" type="time"></label>
-        <label>Horas<input id="manualHours" type="number" min="0.05" step="0.25" placeholder="2.5"></label>
+        <label>Horas<input id="manualHours" type="number" min="0" step="any" placeholder="2.5"></label>
       </div>
       <div class="dialog-actions">
         <button type="button" class="secondary" id="cancelDialogBtn">Cancelar</button>
@@ -138,6 +137,53 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <dialog id="recordDialog">
+    <form method="dialog" id="recordDialogForm" class="dialog-card">
+      <div>
+        <p class="eyebrow">Editar registro</p>
+        <h2>Actualizar horas</h2>
+      </div>
+      <input id="editRecordId" type="hidden">
+      <label>Trabajador<select id="editEmployee"></select></label>
+      <label>Tipo<select id="editType">
+        <option value="normal">Horas normales</option>
+        <option value="overtime">Horas extras</option>
+        <option value="vacation">Vacaciones</option>
+      </select></label>
+      <label>Proyecto<input id="editProject" required></label>
+      <label>Subtarea<select id="editTask"></select></label>
+      <div class="manual-fields active">
+        <label>Fecha<input id="editDate" type="date" required></label>
+        <label>Inicio<input id="editStart" type="time" required></label>
+        <label>Horas<input id="editHours" type="number" min="0" step="any" required></label>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="secondary" id="cancelRecordDialogBtn">Cancelar</button>
+        <button type="submit">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="vacationDialog">
+    <form method="dialog" id="vacationDialogForm" class="dialog-card">
+      <div>
+        <p class="eyebrow">Vacaciones</p>
+        <h2>Añadir vacaciones</h2>
+      </div>
+      <label>Trabajador<select id="vacationEmployee"></select></label>
+      <div class="manual-fields active">
+        <label>Desde<input id="vacationFrom" type="date" required></label>
+        <label>Hasta<input id="vacationTo" type="date" required></label>
+        <label>Horas/día<input id="vacationHours" type="number" min="0.5" step="0.5" value="8" required></label>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="secondary" id="cancelVacationDialogBtn">Cancelar</button>
+        <button type="submit">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="https://www.gstatic.com/firebasejs/12.13.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.13.0/firebase-database-compat.js"></script>
   <script src="firebase-config.js"></script>
