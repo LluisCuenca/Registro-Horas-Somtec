@@ -96,15 +96,7 @@ button:hover,
 .brand {
   display: flex;
   align-items: center;
-  gap: 24px;
   min-width: 0;
-}
-
-.brand-logo {
-  width: 144px;
-  height: auto;
-  display: block;
-  flex: 0 0 auto;
 }
 
 .brand h1,
@@ -843,10 +835,6 @@ dialog::backdrop {
     align-items: flex-start;
     flex-direction: column;
     gap: 14px;
-  }
-
-  .brand-logo {
-    width: 128px;
   }
 
   .header-status {
