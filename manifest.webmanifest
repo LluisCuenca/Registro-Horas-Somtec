@@ -1,0 +1,22 @@
+{
+  "name": "Registro Horas Somtec",
+  "short_name": "Horas Somtec",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#38558e",
+  "theme_color": "#38558e",
+  "icons": [
+    {
+      "src": "assets/favicon.png",
+      "sizes": "1000x1000",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/web-app-icon.png",
+      "sizes": "1000x1000",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

@@ -2,4 +2,6 @@
 Referencia Archviz/
 Referencia Visual Somtec/
 *.png
+!assets/favicon.png
 !assets/logo-somtec.png
+!assets/web-app-icon.png
