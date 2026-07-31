@@ -7,7 +7,7 @@ const path = require("path");
   });
   const page = await browser.newPage();
   const indexPath = path.resolve(__dirname, "..", "index.html");
-  await page.goto(`file://${indexPath}`);
+  await page.goto(`file://${indexPath}?localOnly=1`);
   await page.evaluate(() => localStorage.removeItem("somtec_hours_v1"));
   await page.reload();
 

@@ -113,6 +113,10 @@ function setStorageStatus(label) {
 }
 
 function initRemoteSync() {
+  if (new URLSearchParams(window.location.search).get("localOnly") === "1") {
+    setStorageStatus("Local");
+    return;
+  }
   const config = window.SOMTEC_FIREBASE_CONFIG;
   if (!config || !config.apiKey || !config.databaseURL || !window.firebase) {
     setStorageStatus("Local");
