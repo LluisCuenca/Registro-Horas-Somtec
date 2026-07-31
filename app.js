@@ -25,6 +25,8 @@ let editingEmployeeId = null;
 let configState = {};
 let historyMode = "day";
 let selectedDate = dateKey(new Date());
+let rangeStartDate = selectedDate;
+let rangeEndDate = selectedDate;
 let remoteRef = null;
 let applyingRemote = false;
 let remoteSaveTimer = null;
@@ -195,6 +197,13 @@ function initials(name) {
     .map((part) => part[0])
     .join("")
     .toUpperCase();
+}
+
+function employeeAvatar(employee, className = "avatar") {
+  if (employee.photo) {
+    return `<img class="${className}" src="${escapeAttr(employee.photo)}" alt="${escapeAttr(employee.name)}">`;
+  }
+  return `<div class="${className} initials">${escapeHtml(initials(employee.name))}</div>`;
 }
 
 function getActiveRecord(employeeId) {
@@ -396,7 +405,7 @@ function renderEmployeeGrid() {
           <div class="employee-name">${escapeHtml(employee.name)}</div>
           <div class="employee-role">${escapeHtml(employee.role)}</div>
         </div>
-        <div class="initials">${escapeHtml(initials(employee.name))}</div>
+        ${employeeAvatar(employee, "initials")}
       </div>
       <div class="state-dot ${state}"></div>
       <div class="timer">${timer}</div>
@@ -457,6 +466,15 @@ function recordsInRange(from, to) {
 
 function getPeriodRange() {
   const selected = dateFromKey(selectedDate);
+  if (historyMode === "range") {
+    const startValue = rangeStartDate || selectedDate;
+    const endValue = rangeEndDate || startValue;
+    const fromKey = startValue <= endValue ? startValue : endValue;
+    const toKey = startValue <= endValue ? endValue : startValue;
+    const from = new Date(`${fromKey}T00:00:00`);
+    const to = endOfDay(new Date(`${toKey}T00:00:00`));
+    return { from, to, label: `${formatDateShort(from)} - ${formatDateShort(to)}` };
+  }
   if (historyMode === "week") {
     const from = startOfISOWeekInput(getWeekInputValue(selected));
     const to = endOfDay(addDays(from, 6));
@@ -477,16 +495,24 @@ function getPeriodRange() {
 }
 
 function renderPeriodControls() {
-  $$(".period-tab").forEach((button) => button.classList.toggle("active", button.dataset.period === historyMode));
+  $$(".period-tab").forEach((button) => {
+    const active = button.dataset.period === historyMode;
+    button.classList.toggle("active", active);
+    button.style.background = active ? "#38558e" : "#fff";
+    button.style.color = active ? "#fff" : "var(--blue)";
+  });
   $("#periodDateWrap").classList.toggle("hidden", historyMode !== "day");
   $("#periodWeekWrap").classList.toggle("hidden", historyMode !== "week");
   $("#periodMonthWrap").classList.toggle("hidden", historyMode !== "month");
   $("#periodYearWrap").classList.toggle("hidden", historyMode !== "year");
+  $("#periodRangeWrap").classList.toggle("hidden", historyMode !== "range");
   const selected = dateFromKey(selectedDate);
   $("#periodDate").value = selectedDate;
   $("#periodWeek").value = getWeekInputValue(selected);
   $("#periodMonth").value = selectedDate.slice(0, 7);
   $("#periodYear").value = selected.getFullYear();
+  $("#periodRangeStart").value = rangeStartDate || selectedDate;
+  $("#periodRangeEnd").value = rangeEndDate || selectedDate;
 }
 
 function renderCalendar() {
@@ -691,7 +717,10 @@ function renderEmployeesConfig() {
   const rows = data.employees.map((employee) => {
     if (configState.employee === employee.id) return employeeEditorRow(employee);
     return `<div class="table-row">
-      <div><strong>${escapeHtml(employee.name)}</strong><small>${escapeHtml(employee.role)}</small></div>
+      <div class="employee-config-summary">
+        ${employeeAvatar(employee, "config-avatar")}
+        <div><strong>${escapeHtml(employee.name)}</strong><small>${escapeHtml(employee.role)}</small></div>
+      </div>
       <div class="row-actions">
         <button class="secondary" data-action="edit-employee" data-id="${employee.id}">Editar</button>
         <button class="danger" data-action="delete-employee" data-id="${employee.id}">Eliminar</button>
@@ -704,7 +733,15 @@ function renderEmployeesConfig() {
 
 function employeeEditorRow(employee = {}) {
   const isNew = !employee.id;
+  const photo = configState.employeePhoto ?? employee.photo ?? "";
   return `<div class="table-row edit-row">
+    <div class="photo-editor">
+      ${photo ? `<img id="configEmployeePhotoPreview" class="profile-preview" src="${escapeAttr(photo)}" alt="">` : `<div id="configEmployeePhotoPreview" class="profile-preview empty-preview">${escapeHtml(initials(employee.name || "Nuevo"))}</div>`}
+      <div class="photo-actions">
+        <label class="secondary file-label photo-label">Subir foto<input id="configEmployeePhoto" type="file" accept="image/*"></label>
+        ${photo ? `<button type="button" class="secondary" data-action="remove-employee-photo">Quitar foto</button>` : ""}
+      </div>
+    </div>
     <div class="edit-grid">
       <label>Nombre<input id="configEmployeeName" value="${escapeAttr(employee.name || "")}" placeholder="Nombre y apellidos"></label>
       <label>Puesto<input id="configEmployeeRole" value="${escapeAttr(employee.role || "")}" placeholder="Técnico, oficina..."></label>
@@ -852,6 +889,48 @@ function handleRecordSubmit(event) {
   else toast("Revisa el registro");
 }
 
+function readProfilePhoto(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = reject;
+      image.onload = () => {
+        const size = 320;
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        canvas.width = size;
+        canvas.height = size;
+        const scale = Math.max(size / image.width, size / image.height);
+        const width = image.width * scale;
+        const height = image.height * scale;
+        const x = (size - width) / 2;
+        const y = (size - height) / 2;
+        context.drawImage(image, x, y, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      };
+      image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleEmployeePhotoChange(file) {
+  if (!file) return;
+  try {
+    const photo = await readProfilePhoto(file);
+    configState.employeePhoto = photo;
+    const preview = $("#configEmployeePhotoPreview");
+    if (preview) {
+      preview.outerHTML = `<img id="configEmployeePhotoPreview" class="profile-preview" src="${escapeAttr(photo)}" alt="">`;
+    }
+    toast("Foto preparada");
+  } catch (error) {
+    toast("No se pudo cargar la foto");
+  }
+}
+
 function exportCsv() {
   const header = ["trabajador", "tipo", "proyecto", "subtarea", "inicio", "fin", "horas", "manual"];
   const lines = filteredHistory().map((record) => [
@@ -924,11 +1003,12 @@ function bindEvents() {
       renderHistory();
     }
     if (action === "open-add-employee") {
-      configState = { employee: "__new__" };
+      configState = { employee: "__new__", employeePhoto: "" };
       renderConfig();
     }
     if (action === "edit-employee") {
-      configState = { employee: id };
+      const employeeData = data.employees.find((item) => item.id === id);
+      configState = { employee: id, employeePhoto: employeeData?.photo || "" };
       renderConfig();
     }
     if (action === "save-employee") saveEmployeeConfig(id);
@@ -962,6 +1042,14 @@ function bindEvents() {
       configState = {};
       renderConfig();
     }
+    if (action === "remove-employee-photo") {
+      configState.employeePhoto = "";
+      renderConfig();
+    }
+  });
+
+  document.body.addEventListener("change", (event) => {
+    if (event.target.id === "configEmployeePhoto") handleEmployeePhotoChange(event.target.files?.[0]);
   });
 
   $("#manualEntryBtn").addEventListener("click", () => openTaskDialog("", "manual"));
@@ -976,6 +1064,10 @@ function bindEvents() {
   $("#recordDialogForm").addEventListener("submit", handleRecordSubmit);
   $("#editProject").addEventListener("change", () => updateSubtaskSelect("editProject", "editTask"));
   $$(".period-tab").forEach((button) => button.addEventListener("click", () => {
+    if (button.dataset.period === "range" && historyMode !== "range") {
+      rangeStartDate = selectedDate;
+      rangeEndDate = selectedDate;
+    }
     historyMode = button.dataset.period;
     renderHistory();
   }));
@@ -996,6 +1088,15 @@ function bindEvents() {
   $("#periodYear").addEventListener("change", () => {
     const year = $("#periodYear").value || new Date().getFullYear();
     selectedDate = `${year}-01-01`;
+    renderHistory();
+  });
+  $("#periodRangeStart").addEventListener("change", () => {
+    rangeStartDate = $("#periodRangeStart").value || rangeStartDate;
+    selectedDate = rangeStartDate || selectedDate;
+    renderHistory();
+  });
+  $("#periodRangeEnd").addEventListener("change", () => {
+    rangeEndDate = $("#periodRangeEnd").value || rangeEndDate;
     renderHistory();
   });
   $("#exportCsvBtn").addEventListener("click", exportCsv);
@@ -1027,12 +1128,13 @@ function saveEmployeeConfig(id) {
       const oldName = employee.name;
       employee.name = name;
       employee.role = role;
+      employee.photo = configState.employeePhoto || "";
       data.records.forEach((record) => {
         if (record.employeeId === id) record.employeeName = name || oldName;
       });
     }
   } else {
-    data.employees.push({ id: uid("e"), name, role });
+    data.employees.push({ id: uid("e"), name, role, photo: configState.employeePhoto || "" });
   }
   configState = {};
   saveData();

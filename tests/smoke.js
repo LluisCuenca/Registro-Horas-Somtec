@@ -30,8 +30,16 @@ const path = require("path");
   await page.locator("#periodPanel").getByText("Horas extras").first().waitFor();
   await page.getByRole("button", { name: "Año" }).click();
   await page.locator("#periodPanel").getByText("Vacaciones").first().waitFor();
+  await page.getByRole("button", { name: "Rango" }).click();
+  const today = await page.locator("#periodDate").inputValue();
+  await page.locator("#periodRangeStart").fill(today);
+  await page.locator("#periodRangeStart").dispatchEvent("change");
+  await page.locator("#periodRangeEnd").fill(today);
+  await page.locator("#periodRangeEnd").dispatchEvent("change");
+  await page.locator("#periodPanel").getByText("Facturación / Interna").first().waitFor();
   await page.getByRole("button", { name: "Anterior" }).click();
   await page.getByRole("button", { name: "Siguiente" }).click();
+  await page.getByRole("button", { name: "Día" }).click();
 
   await page.getByRole("button", { name: "Registro" }).click();
   await page.getByRole("button", { name: "Horas extras" }).click();
@@ -57,6 +65,11 @@ const path = require("path");
   await page.locator("#periodPanel").getByText("Facturación / Interna").first().waitFor();
 
   await page.getByRole("button", { name: "Configuración" }).click();
+  await page.locator("#configEmployees").getByRole("button", { name: "Editar" }).first().click();
+  await page.locator("#configEmployeePhoto").setInputFiles(path.resolve(__dirname, "..", "assets", "favicon.png"));
+  await page.locator("img#configEmployeePhotoPreview.profile-preview").waitFor();
+  await page.getByRole("button", { name: "Guardar", exact: true }).click();
+  await page.locator("#configEmployees img.config-avatar").first().waitFor();
   await page.getByRole("button", { name: "Añadir trabajador" }).click();
   await page.locator("#configEmployeeName").fill("Nueva Persona");
   await page.locator("#configEmployeeRole").fill("Pruebas");

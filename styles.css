@@ -291,6 +291,13 @@ h3 {
   color: var(--blue);
   font-family: var(--font-display);
   font-weight: 600;
+  overflow: hidden;
+  object-fit: cover;
+}
+
+img.initials {
+  display: block;
+  padding: 0;
 }
 
 .state-dot {
@@ -362,7 +369,7 @@ h3 {
 
 .period-tabs {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 1px;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -370,7 +377,7 @@ h3 {
   background: var(--line);
 }
 
-.period-tab {
+.period-tabs .period-tab {
   border: 0;
   border-radius: 0;
   background: #fff;
@@ -378,20 +385,32 @@ h3 {
   box-shadow: none;
 }
 
-.period-tab:hover {
+.period-tabs .period-tab:hover {
   transform: none;
   box-shadow: none;
 }
 
-.period-tab.active {
-  background: var(--blue);
-  color: #fff;
+.period-tabs .period-tab.active {
+  background-color: var(--blue) !important;
+  color: #fff !important;
+}
+
+.period-tabs .period-tab:not(.active) {
+  background-color: #fff !important;
+  color: var(--blue) !important;
 }
 
 .period-pickers {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
+}
+
+.range-pickers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  grid-column: span 2;
 }
 
 label {
@@ -427,8 +446,20 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(56, 85, 142, .13);
 }
 
+.file-label.secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  color: var(--blue);
+  font-size: 16px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .calendar-shell {
-  padding: 16px;
+  width: min(100%, 1160px);
+  padding: 14px;
   margin-bottom: 18px;
 }
 
@@ -472,10 +503,10 @@ textarea:focus {
 }
 
 .calendar-day {
-  min-height: 92px;
+  min-height: 72px;
   border: 1px solid var(--line);
   border-radius: 0;
-  padding: 9px;
+  padding: 7px;
   background: #fff;
   color: var(--ink);
   box-shadow: none;
@@ -494,8 +525,8 @@ textarea:focus {
 .calendar-day.muted-day { opacity: .38; }
 .calendar-day.selected { outline: 3px solid rgba(79, 184, 95, .30); border-color: var(--green); }
 .day-number { color: var(--blue); font-family: var(--font-display); font-weight: 600; }
-.day-hours { color: var(--muted); font-size: 12px; }
-.day-chip { display: inline-block; width: max-content; max-width: 100%; overflow: hidden; text-overflow: ellipsis; color: var(--green); font-size: 12px; }
+.day-hours { color: var(--muted); font-size: 11px; }
+.day-chip { display: inline-block; width: max-content; max-width: 100%; overflow: hidden; text-overflow: ellipsis; color: var(--green); font-size: 11px; }
 
 .calendar-dots {
   display: flex;
@@ -702,6 +733,63 @@ textarea:focus {
   font-weight: 400;
 }
 
+.employee-config-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.config-avatar {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--soft);
+  color: var(--blue);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  object-fit: cover;
+  overflow: hidden;
+}
+
+.photo-editor {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.profile-preview {
+  width: 74px;
+  height: 74px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--soft);
+  color: var(--blue);
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  object-fit: cover;
+  overflow: hidden;
+}
+
+.photo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.photo-label {
+  min-height: 38px;
+  font-size: 14px !important;
+}
+
 .table-row small {
   display: block;
   margin-top: 3px;
@@ -843,11 +931,16 @@ dialog::backdrop {
 
   .history-controls,
   .period-pickers,
+  .range-pickers,
   .backup-panel,
   .calendar-titlebar,
   .record-row,
   .worker-period-grid {
     grid-template-columns: 1fr;
+  }
+
+  .range-pickers {
+    grid-column: auto;
   }
 
   .calendar-titlebar strong {
@@ -866,6 +959,11 @@ dialog::backdrop {
   .calendar-day {
     min-height: 74px;
     padding: 7px;
+  }
+
+  .photo-editor {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .day-chip {
