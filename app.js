@@ -223,23 +223,35 @@ function typeClass(type) {
 
 function activityLabel(record) {
   if (recordType(record) === "vacation") return "Vacaciones";
-  return `${record.project || "Proyecto"} / ${record.task || "Subtarea"}`;
+  return `${record.project || "Tarea"} / ${record.task || "Subtarea"}`;
 }
 
-function subtaskOptions() {
-  const seen = new Set();
-  const options = [];
-  Object.values(data.tasks).forEach((items) => {
-    items.forEach((item) => {
-      const value = item.trim();
-      if (value && !seen.has(value)) {
-        seen.add(value);
-        options.push(value);
-      }
-    });
-  });
+function taskOptions(extra = "") {
+  const options = Object.keys(data.tasks);
+  if (extra && !options.includes(extra)) options.push(extra);
+  return options;
+}
+
+function subtaskOptionsFor(taskName, extra = "") {
+  const options = [...(data.tasks[taskName] || [])];
+  if (extra && !options.includes(extra)) options.push(extra);
   if (!options.length) options.push("General");
   return options;
+}
+
+function setSelectOptions(select, options, selectedValue = "") {
+  if (!select) return;
+  const fallback = options[0] || "";
+  const value = selectedValue && options.includes(selectedValue) ? selectedValue : fallback;
+  select.innerHTML = options.map((option) => `<option value="${escapeAttr(option)}">${escapeHtml(option)}</option>`).join("");
+  select.value = value;
+}
+
+function updateSubtaskSelect(taskSelectId, subtaskSelectId, selectedSubtask = "") {
+  const taskSelect = $(`#${taskSelectId}`);
+  const subtaskSelect = $(`#${subtaskSelectId}`);
+  if (!taskSelect || !subtaskSelect) return;
+  setSelectOptions(subtaskSelect, subtaskOptionsFor(taskSelect.value, selectedSubtask), selectedSubtask);
 }
 
 function startRecord(employeeId, project, task) {
@@ -405,17 +417,19 @@ function weekTotalsForEmployee(employeeId) {
   return totals;
 }
 
-function renderFilters() {
+function renderFilters(selected = {}) {
   const employeeOptions = data.employees.map((employee) => `<option value="${employee.id}">${escapeHtml(employee.name)}</option>`).join("");
-  const taskOptions = subtaskOptions().map((task) => `<option value="${escapeAttr(task)}">${escapeHtml(task)}</option>`).join("");
   ["dialogEmployee", "editEmployee", "vacationEmployee"].forEach((id) => {
     const el = $(`#${id}`);
     if (el) el.innerHTML = employeeOptions;
   });
-  ["dialogTask", "editTask"].forEach((id) => {
-    const el = $(`#${id}`);
-    if (el) el.innerHTML = taskOptions;
-  });
+
+  const dialogTask = selected.dialogProject || $("#dialogProject")?.value || "";
+  const editTask = selected.editProject || $("#editProject")?.value || "";
+  setSelectOptions($("#dialogProject"), taskOptions(dialogTask), dialogTask);
+  setSelectOptions($("#editProject"), taskOptions(editTask), editTask);
+  updateSubtaskSelect("dialogProject", "dialogTask", selected.dialogTask || $("#dialogTask")?.value || "");
+  updateSubtaskSelect("editProject", "editTask", selected.editTask || $("#editTask")?.value || "");
 }
 
 function filteredHistory() {
@@ -803,12 +817,12 @@ function handleVacationSubmit(event) {
 function openRecordDialog(recordId) {
   const record = data.records.find((item) => item.id === recordId);
   if (!record || !record.endAt) return;
-  renderFilters();
+  renderFilters({ editProject: record.project || "", editTask: record.task || "" });
   $("#editRecordId").value = record.id;
   $("#editEmployee").value = record.employeeId;
   $("#editType").value = recordType(record);
   $("#editProject").value = record.project || "";
-  $("#editTask").value = record.task || subtaskOptions()[0] || "General";
+  updateSubtaskSelect("editProject", "editTask", record.task || "");
   $("#editDate").value = dateKey(record.startAt);
   $("#editStart").value = new Date(record.startAt).toTimeString().slice(0, 5);
   $("#editHours").value = recordHours(record).toFixed(2);
@@ -951,10 +965,12 @@ function bindEvents() {
   $("#vacationBtn").addEventListener("click", openVacationDialog);
   $("#cancelDialogBtn").addEventListener("click", closeTaskDialog);
   $("#taskDialogForm").addEventListener("submit", handleDialogSubmit);
+  $("#dialogProject").addEventListener("change", () => updateSubtaskSelect("dialogProject", "dialogTask"));
   $("#cancelVacationDialogBtn").addEventListener("click", closeVacationDialog);
   $("#vacationDialogForm").addEventListener("submit", handleVacationSubmit);
   $("#cancelRecordDialogBtn").addEventListener("click", closeRecordDialog);
   $("#recordDialogForm").addEventListener("submit", handleRecordSubmit);
+  $("#editProject").addEventListener("change", () => updateSubtaskSelect("editProject", "editTask"));
   $$(".period-tab").forEach((button) => button.addEventListener("click", () => {
     historyMode = button.dataset.period;
     renderHistory();

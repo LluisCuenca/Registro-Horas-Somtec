@@ -16,14 +16,14 @@ const path = require("path");
   });
 
   await page.getByRole("button", { name: "Registrar entrada" }).first().click();
-  await page.locator("#dialogProject").fill("Facturacion Somtec");
+  await page.locator("#dialogProject").selectOption({ label: "Facturación" });
   await page.locator("#dialogTask").selectOption({ label: "Interna" });
   await page.locator("#confirmTaskBtn").click();
   await page.waitForTimeout(1200);
   await page.getByRole("button", { name: "Registrar salida" }).click();
 
   await page.getByRole("button", { name: "Historial" }).click();
-  await page.locator("#periodPanel").getByText("Facturacion Somtec").first().waitFor();
+  await page.locator("#periodPanel").getByText("Facturación / Interna").first().waitFor();
   await page.getByRole("button", { name: "Semana" }).click();
   await page.locator("#periodPanel").getByText("Horas normales").first().waitFor();
   await page.getByRole("button", { name: "Mes" }).click();
@@ -35,7 +35,7 @@ const path = require("path");
 
   await page.getByRole("button", { name: "Registro" }).click();
   await page.getByRole("button", { name: "Horas extras" }).click();
-  await page.locator("#dialogProject").fill("Urgencia cliente");
+  await page.locator("#dialogProject").selectOption({ label: "Servicios" });
   await page.locator("#dialogTask").selectOption({ label: "Soporte cliente" });
   await page.locator("#manualHours").fill("1.5");
   await page.getByRole("button", { name: "Guardar extras" }).click();
@@ -44,7 +44,7 @@ const path = require("path");
   await page.locator("#vacationHours").fill("8");
   await page.getByRole("button", { name: "Guardar" }).click();
   await page.getByRole("button", { name: "Historial" }).click();
-  await page.locator("#periodPanel").getByText("Urgencia cliente").first().waitFor();
+  await page.locator("#periodPanel").getByText("Servicios / Soporte cliente").first().waitFor();
   await page.locator("#periodPanel").getByText("Vacaciones").first().waitFor();
 
   await page.getByRole("button", { name: "Editar" }).first().click();
@@ -54,7 +54,7 @@ const path = require("path");
 
   await page.reload();
   await page.getByRole("button", { name: "Historial" }).click();
-  await page.locator("#periodPanel").getByText("Facturacion Somtec").first().waitFor();
+  await page.locator("#periodPanel").getByText("Facturación / Interna").first().waitFor();
 
   await page.getByRole("button", { name: "Configuración" }).click();
   await page.getByRole("button", { name: "Añadir trabajador" }).click();
