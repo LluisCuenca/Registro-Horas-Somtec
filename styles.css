@@ -364,7 +364,19 @@ img.initials {
   gap: 16px;
   align-items: end;
   padding: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
+}
+
+.history-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  background: #fff;
 }
 
 .period-tabs {
@@ -546,7 +558,7 @@ textarea:focus {
 
 .period-panel {
   display: grid;
-  gap: 14px;
+  gap: 18px;
 }
 
 .period-summary {
@@ -577,6 +589,128 @@ textarea:focus {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
   gap: 14px;
+}
+
+.history-section {
+  display: grid;
+  gap: 12px;
+}
+
+.history-section-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.history-section-head h3,
+.task-summary-top h4 {
+  margin: 0;
+}
+
+.history-section-head p {
+  margin-top: 4px;
+}
+
+.matrix-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.history-matrix {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.history-matrix th,
+.history-matrix td {
+  border-bottom: 1px solid var(--line-soft);
+  padding: 12px 13px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.history-matrix th:first-child,
+.history-matrix td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #fff;
+  text-align: left;
+}
+
+.history-matrix thead th {
+  color: var(--blue);
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+.history-matrix tbody th {
+  color: var(--ink);
+  font-weight: 400;
+}
+
+.history-matrix tfoot th,
+.history-matrix tfoot td,
+.matrix-total {
+  color: var(--blue);
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+.task-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.task-summary-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 15px;
+  background: #fff;
+}
+
+.task-summary-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.task-summary-top strong {
+  color: var(--blue);
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.task-sublist {
+  display: grid;
+  gap: 7px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 10px;
+}
+
+.task-subrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.task-subrow strong {
+  color: var(--blue);
+  font-family: var(--font-display);
+  font-weight: 600;
 }
 
 .worker-period-card {
@@ -654,6 +788,11 @@ textarea:focus {
   gap: 8px;
   border-top: 1px solid var(--line);
   padding-top: 12px;
+}
+
+.ledger-list {
+  border-top: 0;
+  padding-top: 0;
 }
 
 .record-row {
@@ -930,6 +1069,7 @@ dialog::backdrop {
   }
 
   .history-controls,
+  .history-filter-bar,
   .period-pickers,
   .range-pickers,
   .backup-panel,
@@ -950,6 +1090,12 @@ dialog::backdrop {
   .record-actions {
     justify-content: flex-start;
     flex-wrap: wrap;
+  }
+
+  .history-section-head,
+  .task-summary-top {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .period-tabs {

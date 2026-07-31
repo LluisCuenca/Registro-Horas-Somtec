@@ -17,8 +17,7 @@
   <header class="app-header">
     <div class="brand">
       <div>
-        <p class="eyebrow">Registro interno</p>
-        <h1>Horas Somtec</h1>
+        <h1>Registro interno horas Somtec</h1>
       </div>
     </div>
     <div class="header-status">
@@ -53,7 +52,8 @@
           <h2>Calendario de horas</h2>
         </div>
         <div class="actions">
-          <button class="secondary" id="exportCsvBtn">Exportar csv</button>
+          <button class="secondary" id="exportCsvBtn">Exportar vista</button>
+          <button class="secondary" id="exportRangeCsvBtn">Exportar rango</button>
           <button class="secondary" id="exportJsonBtn">Copia json</button>
           <label class="secondary file-label">Importar json<input id="importJsonInput" type="file" accept="application/json"></label>
         </div>
@@ -77,6 +77,7 @@
           </div>
         </div>
       </div>
+      <div id="historyFilterBar"></div>
       <div id="calendarWrap"></div>
       <div id="periodPanel"></div>
     </section>
@@ -107,7 +108,7 @@
       <div class="panel backup-panel">
         <div>
           <h3>Copia de seguridad</h3>
-          <p class="muted">Exporta o importa los datos locales del navegador.</p>
+          <p class="muted">Exporta o importa una copia manual de los datos.</p>
         </div>
         <div class="actions">
           <button class="secondary" id="configExportJsonBtn">Descargar json</button>
@@ -115,7 +116,7 @@
           <button class="danger" id="resetDemoBtn">Reiniciar datos</button>
         </div>
       </div>
-      <p class="note">Los datos se guardan en este navegador. Para uso compartido entre varios dispositivos hace falta conectar una base de datos propia de Somtec.</p>
+      <p class="note">Los datos se sincronizan con Firebase cuando está disponible. Si no hay conexión, se conserva una copia local en este navegador.</p>
     </section>
   </main>
 

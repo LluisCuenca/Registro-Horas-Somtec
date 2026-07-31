@@ -27,6 +27,9 @@ let historyMode = "day";
 let selectedDate = dateKey(new Date());
 let rangeStartDate = selectedDate;
 let rangeEndDate = selectedDate;
+let historyEmployeeFilter = "all";
+let historyTaskFilter = "all";
+let historyTypeFilter = "all";
 let remoteRef = null;
 let applyingRemote = false;
 let remoteSaveTimer = null;
@@ -445,16 +448,73 @@ function renderFilters(selected = {}) {
   updateSubtaskSelect("editProject", "editTask", selected.editTask || $("#editTask")?.value || "");
 }
 
+function taskNamesWithRecords(records = completedRecords()) {
+  const names = new Set(Object.keys(data.tasks));
+  records.forEach((record) => {
+    if (recordType(record) === "vacation") names.add("Vacaciones");
+    else if (record.project) names.add(record.project);
+  });
+  return Array.from(names).sort((a, b) => a.localeCompare(b, "es"));
+}
+
+function recordMatchesHistoryFilters(record) {
+  if (historyEmployeeFilter !== "all" && record.employeeId !== historyEmployeeFilter) return false;
+  if (historyTypeFilter !== "all" && recordType(record) !== historyTypeFilter) return false;
+  if (historyTaskFilter !== "all") {
+    const taskName = recordType(record) === "vacation" ? "Vacaciones" : record.project;
+    if (taskName !== historyTaskFilter) return false;
+  }
+  return true;
+}
+
+function applyHistoryFilters(records) {
+  return records.filter(recordMatchesHistoryFilters);
+}
+
 function filteredHistory() {
   const { from, to } = getPeriodRange();
-  return recordsInRange(from, to)
+  return applyHistoryFilters(recordsInRange(from, to))
     .sort((a, b) => new Date(b.startAt) - new Date(a.startAt));
 }
 
 function renderHistory() {
   renderPeriodControls();
+  renderHistoryFilters();
   renderCalendar();
   renderPeriodPanel();
+}
+
+function renderHistoryFilters() {
+  const wrap = $("#historyFilterBar");
+  if (!wrap) return;
+  if (historyEmployeeFilter !== "all" && !data.employees.some((employee) => employee.id === historyEmployeeFilter)) {
+    historyEmployeeFilter = "all";
+  }
+  const taskNames = taskNamesWithRecords();
+  if (historyTaskFilter !== "all" && !taskNames.includes(historyTaskFilter)) {
+    historyTaskFilter = "all";
+  }
+  const employeeOptions = [
+    `<option value="all">Todos los trabajadores</option>`,
+    ...data.employees.map((employee) => `<option value="${employee.id}">${escapeHtml(employee.name)}</option>`)
+  ].join("");
+  const taskOptionsHtml = [
+    `<option value="all">Todas las tareas</option>`,
+    ...taskNames.map((task) => `<option value="${escapeAttr(task)}">${escapeHtml(task)}</option>`)
+  ].join("");
+  wrap.innerHTML = `<div class="history-filter-bar">
+    <label>Trabajador<select id="historyEmployeeFilter">${employeeOptions}</select></label>
+    <label>Tarea<select id="historyTaskFilter">${taskOptionsHtml}</select></label>
+    <label>Tipo<select id="historyTypeFilter">
+      <option value="all">Todos los tipos</option>
+      <option value="normal">Horas normales</option>
+      <option value="overtime">Horas extras</option>
+      <option value="vacation">Vacaciones</option>
+    </select></label>
+  </div>`;
+  $("#historyEmployeeFilter").value = historyEmployeeFilter;
+  $("#historyTaskFilter").value = historyTaskFilter;
+  $("#historyTypeFilter").value = historyTypeFilter;
 }
 
 function recordsInRange(from, to) {
@@ -564,10 +624,13 @@ function calendarTypeDots(totals) {
 function renderPeriodPanel() {
   const panel = $("#periodPanel");
   const { from, to, label } = getPeriodRange();
-  const rows = recordsInRange(from, to).sort((a, b) => new Date(a.startAt) - new Date(b.startAt));
+  const allRows = recordsInRange(from, to).sort((a, b) => new Date(a.startAt) - new Date(b.startAt));
+  const rows = applyHistoryFilters(allRows);
   const totals = totalsByType(rows);
   const total = rows.reduce((sum, record) => sum + recordHours(record), 0);
   const activeDays = new Set(rows.map((record) => dateKey(record.startAt))).size;
+  const periodDays = Math.max(1, Math.round((startOfDay(to) - startOfDay(from)) / 86400000) + 1);
+  const averagePerActiveDay = activeDays ? total / activeDays : 0;
   const workerCards = data.employees.map((employee) => renderWorkerPeriodCard(employee, rows)).join("");
   panel.innerHTML = `<div class="period-panel">
     <div class="period-summary">
@@ -576,9 +639,18 @@ function renderPeriodPanel() {
       <div class="period-metric"><span class="muted">Horas normales</span><strong>${totals.normal.toFixed(2)} h</strong></div>
       <div class="period-metric"><span class="muted">Horas extras</span><strong>${totals.overtime.toFixed(2)} h</strong></div>
       <div class="period-metric"><span class="muted">Vacaciones</span><strong>${totals.vacation.toFixed(2)} h</strong></div>
-      <div class="period-metric"><span class="muted">Días con actividad</span><strong>${activeDays}</strong></div>
+      <div class="period-metric"><span class="muted">Días con actividad</span><strong>${activeDays}/${periodDays}</strong></div>
+      <div class="period-metric"><span class="muted">Media por día activo</span><strong>${averagePerActiveDay.toFixed(2)} h</strong></div>
     </div>
-    <div class="worker-period-grid">${workerCards}</div>
+    ${renderWorkerTaskMatrix(rows)}
+    ${renderTaskSummary(rows)}
+    <section class="history-section">
+      <div class="history-section-head">
+        <div><h3>Detalle por trabajador</h3><p class="muted">Horas agrupadas por tarea y tipo dentro de la vista.</p></div>
+      </div>
+      <div class="worker-period-grid">${workerCards}</div>
+    </section>
+    ${renderRecordLedger(rows)}
   </div>`;
 }
 
@@ -609,7 +681,6 @@ function renderWorkerPeriodCard(employee, periodRecords) {
       <span class="breakdown-hours">${item.hours.toFixed(2)}h</span>
     </div>`)
     .join("") || `<div class="muted">Sin horas registradas en este periodo.</div>`;
-  const recordRows = rows.length ? rows.map(renderRecordRow).join("") : "";
   return `<article class="worker-period-card">
     <div class="worker-period-head">
       <div><strong>${escapeHtml(employee.name)}</strong><br><span class="muted">${escapeHtml(employee.role)}</span></div>
@@ -621,8 +692,99 @@ function renderWorkerPeriodCard(employee, periodRecords) {
       <span>${totals.vacation.toFixed(1)}h vacaciones</span>
     </div>
     <div class="breakdown-list">${breakdownRows}</div>
-    ${recordRows ? `<div class="record-list">${recordRows}</div>` : ""}
   </article>`;
+}
+
+function renderWorkerTaskMatrix(records) {
+  const employees = data.employees.filter((employee) => historyEmployeeFilter === "all" || employee.id === historyEmployeeFilter);
+  const taskNames = taskNamesWithRecords(records);
+  if (!records.length) {
+    return `<section class="history-section">
+      <div class="history-section-head"><div><h3>Matriz trabajador × tarea</h3><p class="muted">Sin datos para la vista actual.</p></div></div>
+    </section>`;
+  }
+  const headerCells = taskNames.map((task) => `<th>${escapeHtml(task)}</th>`).join("");
+  const rows = employees.map((employee) => {
+    const employeeRows = records.filter((record) => record.employeeId === employee.id);
+    const total = employeeRows.reduce((sum, record) => sum + recordHours(record), 0);
+    const cells = taskNames.map((task) => {
+      const hours = employeeRows
+        .filter((record) => (recordType(record) === "vacation" ? "Vacaciones" : record.project) === task)
+        .reduce((sum, record) => sum + recordHours(record), 0);
+      return `<td>${hours ? hours.toFixed(2) : "-"}</td>`;
+    }).join("");
+    return `<tr><th>${escapeHtml(employee.name)}</th>${cells}<td class="matrix-total">${total.toFixed(2)}</td></tr>`;
+  }).join("");
+  const footerTotal = records.reduce((sum, record) => sum + recordHours(record), 0);
+  const footerCells = taskNames.map((task) => {
+    const hours = records
+      .filter((record) => (recordType(record) === "vacation" ? "Vacaciones" : record.project) === task)
+      .reduce((sum, record) => sum + recordHours(record), 0);
+    return `<td>${hours ? hours.toFixed(2) : "-"}</td>`;
+  }).join("");
+  return `<section class="history-section">
+    <div class="history-section-head">
+      <div><h3>Matriz trabajador × tarea</h3><p class="muted">Vista cruzada para comparar carga de trabajo por persona y tarea.</p></div>
+    </div>
+    <div class="matrix-scroll">
+      <table class="history-matrix">
+        <thead><tr><th>Trabajador</th>${headerCells}<th>Total</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><th>Total</th>${footerCells}<td class="matrix-total">${footerTotal.toFixed(2)}</td></tr></tfoot>
+      </table>
+    </div>
+  </section>`;
+}
+
+function renderTaskSummary(records) {
+  const byTask = new Map();
+  records.forEach((record) => {
+    const taskName = recordType(record) === "vacation" ? "Vacaciones" : record.project || "Sin tarea";
+    const subtask = recordType(record) === "vacation" ? "Vacaciones" : record.task || "Sin subtarea";
+    const item = byTask.get(taskName) || { hours: 0, subtasks: new Map(), types: { normal: 0, overtime: 0, vacation: 0 } };
+    const hours = recordHours(record);
+    item.hours += hours;
+    item.subtasks.set(subtask, (item.subtasks.get(subtask) || 0) + hours);
+    item.types[recordType(record)] += hours;
+    byTask.set(taskName, item);
+  });
+  const cards = Array.from(byTask.entries())
+    .sort((a, b) => b[1].hours - a[1].hours)
+    .map(([task, item]) => {
+      const subRows = Array.from(item.subtasks.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([subtask, hours]) => `<div class="task-subrow"><span>${escapeHtml(subtask)}</span><strong>${hours.toFixed(2)}h</strong></div>`)
+        .join("");
+      return `<article class="task-summary-card">
+        <div class="task-summary-top"><h4>${escapeHtml(task)}</h4><strong>${item.hours.toFixed(2)}h</strong></div>
+        <div class="worker-type-totals">
+          <span>${item.types.normal.toFixed(1)}h normales</span>
+          <span>${item.types.overtime.toFixed(1)}h extras</span>
+          <span>${item.types.vacation.toFixed(1)}h vacaciones</span>
+        </div>
+        <div class="task-sublist">${subRows}</div>
+      </article>`;
+    }).join("") || `<div class="empty">Sin tareas en esta vista.</div>`;
+  return `<section class="history-section">
+    <div class="history-section-head">
+      <div><h3>Resumen por tarea</h3><p class="muted">Horas repartidas por tarea y subtarea.</p></div>
+    </div>
+    <div class="task-summary-grid">${cards}</div>
+  </section>`;
+}
+
+function renderRecordLedger(records) {
+  const rows = records
+    .slice()
+    .sort((a, b) => new Date(b.startAt) - new Date(a.startAt))
+    .map(renderRecordRow)
+    .join("") || `<div class="empty">Sin registros en esta vista.</div>`;
+  return `<section class="history-section">
+    <div class="history-section-head">
+      <div><h3>Registros editables</h3><p class="muted">Listado completo del periodo para corregir o eliminar entradas.</p></div>
+    </div>
+    <div class="record-list ledger-list">${rows}</div>
+  </section>`;
 }
 
 function renderRecordRow(record) {
@@ -739,7 +901,7 @@ function employeeEditorRow(employee = {}) {
       ${photo ? `<img id="configEmployeePhotoPreview" class="profile-preview" src="${escapeAttr(photo)}" alt="">` : `<div id="configEmployeePhotoPreview" class="profile-preview empty-preview">${escapeHtml(initials(employee.name || "Nuevo"))}</div>`}
       <div class="photo-actions">
         <label class="secondary file-label photo-label">Subir foto<input id="configEmployeePhoto" type="file" accept="image/*"></label>
-        ${photo ? `<button type="button" class="secondary" data-action="remove-employee-photo">Quitar foto</button>` : ""}
+        <button type="button" class="secondary" data-action="remove-employee-photo">Quitar foto</button>
       </div>
     </div>
     <div class="edit-grid">
@@ -932,18 +1094,34 @@ async function handleEmployeePhotoChange(file) {
 }
 
 function exportCsv() {
-  const header = ["trabajador", "tipo", "proyecto", "subtarea", "inicio", "fin", "horas", "manual"];
-  const lines = filteredHistory().map((record) => [
+  downloadRecordsCsv("registro-horas-somtec-vista.csv", filteredHistory());
+}
+
+function exportRangeCsv() {
+  const startValue = rangeStartDate || selectedDate;
+  const endValue = rangeEndDate || startValue;
+  const fromKey = startValue <= endValue ? startValue : endValue;
+  const toKey = startValue <= endValue ? endValue : startValue;
+  const from = new Date(`${fromKey}T00:00:00`);
+  const to = endOfDay(new Date(`${toKey}T00:00:00`));
+  const rows = applyHistoryFilters(recordsInRange(from, to))
+    .sort((a, b) => new Date(b.startAt) - new Date(a.startAt));
+  downloadRecordsCsv(`registro-horas-somtec-${fromKey}-${toKey}.csv`, rows);
+}
+
+function downloadRecordsCsv(filename, records) {
+  const header = ["trabajador", "tipo", "tarea", "subtarea", "inicio", "fin", "horas", "manual"];
+  const lines = records.map((record) => [
     record.employeeName,
     typeLabel(recordType(record)),
-    record.project,
+    recordType(record) === "vacation" ? "Vacaciones" : record.project,
     record.task,
     record.startAt,
     record.endAt,
     recordHours(record).toFixed(2),
     record.manual ? "si" : "no"
   ]);
-  downloadFile("registro-horas-somtec.csv", [header, ...lines].map((row) => row.map(csvCell).join(",")).join("\n"), "text/csv");
+  downloadFile(filename, [header, ...lines].map((row) => row.map(csvCell).join(",")).join("\n"), "text/csv");
 }
 
 function exportJson() {
@@ -1050,6 +1228,18 @@ function bindEvents() {
 
   document.body.addEventListener("change", (event) => {
     if (event.target.id === "configEmployeePhoto") handleEmployeePhotoChange(event.target.files?.[0]);
+    if (event.target.id === "historyEmployeeFilter") {
+      historyEmployeeFilter = event.target.value;
+      renderHistory();
+    }
+    if (event.target.id === "historyTaskFilter") {
+      historyTaskFilter = event.target.value;
+      renderHistory();
+    }
+    if (event.target.id === "historyTypeFilter") {
+      historyTypeFilter = event.target.value;
+      renderHistory();
+    }
   });
 
   $("#manualEntryBtn").addEventListener("click", () => openTaskDialog("", "manual"));
@@ -1100,6 +1290,7 @@ function bindEvents() {
     renderHistory();
   });
   $("#exportCsvBtn").addEventListener("click", exportCsv);
+  $("#exportRangeCsvBtn").addEventListener("click", exportRangeCsv);
   $("#exportJsonBtn").addEventListener("click", exportJson);
   $("#configExportJsonBtn").addEventListener("click", exportJson);
   $("#importJsonInput").addEventListener("change", importJsonFromInput);
